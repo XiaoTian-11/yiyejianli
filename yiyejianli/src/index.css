@@ -1,0 +1,111 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-serif: Georgia, Cambria, "Times New Roman", "Songti SC", "STSong", "STZhongsong", "SimSun", serif;
+  --font-mono: "Fira Code", "Courier New", consolas, Monaco, "PingFang SC", "Microsoft YaHei", monospace;
+  --font-display: "Outfit", var(--font-sans);
+  
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+
+  --color-macaron-mint: #B2F2BB;
+  --color-macaron-pink: #FFD1DC;
+  --color-macaron-lavender: #E0BBE4;
+  --color-macaron-blue: #AEC6CF;
+  --color-macaron-yellow: #FFECB3;
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/40 backdrop-blur-xl border border-white/40;
+  }
+  
+  .glass-dark {
+    @apply bg-slate-900/40 backdrop-blur-xl border border-white/10;
+  }
+
+  .macaron-gradient {
+    @apply bg-gradient-to-br from-macaron-pink via-macaron-lavender to-macaron-blue;
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600;
+  }
+
+  .soft-shadow {
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.1);
+  }
+}
+
+body {
+  @apply font-sans bg-slate-50 text-slate-900 antialiased selection:bg-macaron-pink selection:text-slate-900;
+}
+
+.print-hidden {
+  @apply print:hidden;
+}
+
+/* Custom print media rules for high-precision A4 pagination */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+  
+  html, body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .resume-print-container {
+    width: 210mm !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    display: block !important;
+  }
+
+  .resume-print-page {
+    position: relative !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    min-height: 297mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    page-break-before: auto !important;
+    page-break-after: always !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    overflow: hidden !important;
+  }
+
+  .resume-print-page:last-child {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+}
+
+/* Custom scrollbar for a polished look */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 rounded-full hover:bg-slate-300 transition-colors;
+}

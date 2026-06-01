@@ -1,0 +1,19 @@
+{
+  "collections": {
+    "resumes": {
+      "schema": {
+        "userId": "string",
+        "data": "object",
+        "updatedAt": "timestamp"
+      },
+      "indexes": [
+        {
+          "fields": [
+            { "field": "userId", "order": "ASCENDING" },
+            { "field": "updatedAt", "order": "DESCENDING" }
+          ]
+        }
+      ]
+    }
+  }
+}
