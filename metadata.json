@@ -1,0 +1,6 @@
+{
+  "name": "壹页简历",
+  "description": "壹页简历是一款极简、专业的简历生成工具，提供多种名企人资推荐模板，支持双语排版与智能优化。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_AI_API"]
+}
