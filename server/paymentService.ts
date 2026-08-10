@@ -212,7 +212,15 @@ async function applyPlanToUser(
   } else {
     // 订阅：升级为 member
     row.tier = 'member';
-    row.member_until = calcMemberUntil(planType, now);
+    // 续费叠加：已有未过期会员则在原到期日上叠加时长；已是终身保持永久
+    const isLifetime = !!row.member_until && row.member_until.startsWith('2099');
+    if (isLifetime) {
+      row.member_until = '2099-12-31T23:59:59Z';
+    } else {
+      const base =
+        row.member_until && new Date(row.member_until) > now ? new Date(row.member_until) : now;
+      row.member_until = calcMemberUntil(planType, base);
+    }
     row.remaining_pdf_exports = 999;
   }
 

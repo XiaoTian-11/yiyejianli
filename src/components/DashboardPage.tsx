@@ -167,6 +167,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 普通用户
               </span>
             )}
+            {appUser?.tier === 'member' && appUser.memberUntil && (
+              <p className="mt-1.5 text-[11px] text-slate-400 font-medium">
+                {appUser.memberUntil.startsWith('2099')
+                  ? '终身会员 · 永久有效'
+                  : `会员有效期至 ${new Date(appUser.memberUntil).toLocaleDateString()}`}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

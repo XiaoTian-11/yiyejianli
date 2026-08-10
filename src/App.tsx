@@ -25,7 +25,7 @@ import { INITIAL_DATA } from './constants';
 import { INDUSTRY_SAMPLES, TEMPLATE_INDUSTRY_MAP } from './constants/industrySamples';
 import { ResumeData, TemplateId, Page, User as AppUser, PlanType } from './types';
 import { cn } from './lib/utils';
-import { calculateMemberUntil } from './lib/pricing';
+import { calculateRenewedMemberUntil, deriveCurrentPlan } from './lib/pricing';
 import { PAGE_PATH, isProtectedPath } from './lib/routes';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -94,6 +94,8 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<User | any>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
+  // 当前生效的会员套餐（从最近一笔已完成的订阅订单推导），用于定价页精确标记“当前持有”
+  const [currentPlan, setCurrentPlan] = useState<PlanType | undefined>(undefined);
   const pendingLoginRedirect = useRef<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -207,6 +209,13 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // 依据订单与会员状态推导当前生效套餐：
+  // 会员有效（tier=member）时取最近一笔已完成的订阅订单作为“当前持有”套餐，
+  // 避免定价页把未购买的季卡/年卡/终身卡/学生年卡也误标为“当前持有”。
+  useEffect(() => {
+    setCurrentPlan(deriveCurrentPlan(orders, appUser?.tier || 'guest'));
+  }, [orders, appUser]);
 
   const handleSignOut = () => {
     signOut(auth).then(() => {
@@ -376,7 +385,7 @@ export default function App() {
       setAppUser(prev => prev ? {
         ...prev,
         tier: 'member',
-        memberUntil: calculateMemberUntil(planType),
+        memberUntil: calculateRenewedMemberUntil(planType, prev.memberUntil),
         remainingPdfExports: 999,
       } : prev);
       setIsExportModalOpen(false);
@@ -905,6 +914,7 @@ export default function App() {
               <Route path="/pricing" element={
                 <PricingPage
                   currentTier={appUser?.tier || 'guest'}
+                  currentPlan={currentPlan}
                   onSelectPlan={handleSelectPlan}
                 />
               } />

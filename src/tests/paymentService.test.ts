@@ -234,6 +234,44 @@ describe('paymentService', () => {
       await expect(completeOrder(makeDeps(), 'NOPE')).rejects.toThrow('订单不存在');
     });
 
+    it('续费叠加：会员未过期时在原到期日上加套餐时长', async () => {
+      mock.orderMaybeSingle.mockResolvedValue({ data: pendingOrder('month'), error: null });
+      mock.userMaybeSingle.mockResolvedValue({
+        data: { ...freeUserRow, tier: 'member', member_until: '2026-07-02T12:00:00Z' },
+        error: null,
+      });
+
+      const res = await completeOrder(makeDeps(), 'YJL20260602120000ABC123');
+
+      // 原到期日 2026-07-02 + 1 个月 → 2026-08-02
+      expect(res.userUpdate?.member_until).toBe('2026-08-02T12:00:00.000Z');
+    });
+
+    it('续费叠加：会员已过期则从今天起算', async () => {
+      mock.orderMaybeSingle.mockResolvedValue({ data: pendingOrder('month'), error: null });
+      mock.userMaybeSingle.mockResolvedValue({
+        data: { ...freeUserRow, tier: 'member', member_until: '2026-05-01T12:00:00Z' },
+        error: null,
+      });
+
+      const res = await completeOrder(makeDeps(), 'YJL20260602120000ABC123');
+
+      // NOW = 2026-06-02，+1 个月 → 2026-07-02
+      expect(res.userUpdate?.member_until).toBe('2026-07-02T12:00:00.000Z');
+    });
+
+    it('续费叠加：已是终身会员续费保持永久', async () => {
+      mock.orderMaybeSingle.mockResolvedValue({ data: pendingOrder('month'), error: null });
+      mock.userMaybeSingle.mockResolvedValue({
+        data: { ...freeUserRow, tier: 'member', member_until: '2099-12-31T23:59:59Z' },
+        error: null,
+      });
+
+      const res = await completeOrder(makeDeps(), 'YJL20260602120000ABC123');
+
+      expect(res.userUpdate?.member_until).toBe('2099-12-31T23:59:59Z');
+    });
+
     it('user 记录不存在时自动创建默认 free 记录再加权益', async () => {
       mock.orderMaybeSingle.mockResolvedValue({ data: pendingOrder('single_export'), error: null });
       // users 表无记录 → userMaybeSingle 返回 null

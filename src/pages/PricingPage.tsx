@@ -4,14 +4,16 @@ import { Check, Heart } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { SEO } from '../components/SEO';
 import { PLANS } from '../constants';
-import { MembershipTier } from '../types';
+import { MembershipTier, PlanType } from '../types';
 
 interface PricingPageProps {
   onSelectPlan?: (id: string) => void;
   currentTier: MembershipTier;
+  /** 当前生效的会员套餐类型（来自最近一笔已完成的订阅订单），用于标记“当前持有” */
+  currentPlan?: PlanType;
 }
 
-export const PricingPage: React.FC<PricingPageProps> = ({ onSelectPlan, currentTier }) => {
+export const PricingPage: React.FC<PricingPageProps> = ({ onSelectPlan, currentTier, currentPlan }) => {
   return (
     <div className="py-24 px-6 relative overflow-hidden">
       <SEO 
@@ -45,7 +47,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onSelectPlan, currentT
               features={plan.features}
               highlight={plan.highlight}
               dailyPrice={plan.dailyPrice}
-              isCurrent={currentTier === 'member' && plan.type !== 'week'} // Simplified
+              isCurrent={currentPlan === plan.type}
               onSelect={() => onSelectPlan?.(plan.type)}
             />
           ))}
@@ -104,19 +106,18 @@ const PriceCard: React.FC<PriceCardProps> = ({ title, price, description, featur
       ))}
     </div>
 
-    <button 
+    <button
       onClick={onSelect}
-      disabled={isCurrent}
       className={cn(
         "w-full py-4 rounded-2xl font-bold transition-all active:scale-95 shadow-lg",
         isCurrent
-          ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+          ? "bg-orange-50 text-orange-600 border-2 border-orange-200 hover:bg-orange-100"
           : highlight
             ? "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200"
             : "bg-slate-900 text-white hover:bg-black shadow-slate-200"
       )}
     >
-      {isCurrent ? '当前持有' : '立即选择'}
+      {isCurrent ? '续费' : '立即选择'}
     </button>
   </div>
 );
