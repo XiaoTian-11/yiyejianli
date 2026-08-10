@@ -35,10 +35,10 @@ export const LandingPage: React.FC<HeroProps> = ({ onStart, onSelectTemplate }) 
 
   return (
     <div className="relative overflow-hidden">
-      <SEO 
-        title="专业一页纸简历生成器 - 极速打造高通过率求职简历" 
-        description="壹页简历是一款专为求职者量身打造的极简、专业的一页纸简历生成工具。提供多款名企人资推荐模板，支持双语排版与智能优化，助您在5秒初筛中脱颖而出。"
-        keywords="一页纸简历, 简历模板, 简历生成器, ATS简历, 简历制作, 求职简历, 壹页简历, 超级简历, 木及简历"
+      <SEO
+        title="专业一页纸简历生成器 - 打造高通过率求职简历"
+        description="壹页简历是一款专为求职者量身打造的极简、专业的一页纸简历生成工具。提供多款贴合大厂招聘初筛要求的专业模板，支持双语排版与智能优化，助您在简历初筛中展现优势。"
+        keywords="一页纸简历, 简历模板, 简历生成器, ATS简历, 简历制作, 求职简历, 壹页简历"
       />
       
       {/* 氛围感十足的流光背景 */}

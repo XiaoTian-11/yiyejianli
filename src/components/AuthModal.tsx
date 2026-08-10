@@ -22,6 +22,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onOpenAgr
     const message = error?.message || error?.error_description || '';
     const code = error?.code || '';
 
+    // 网络层错误：连接失败 / 域名不可解析 → 给出可操作提示（最常见根因是项目域名不存在或网络不通）
+    const netErr = /failed to fetch|networkerror|load failed|err_name_not_resolved|net::err|could not resolve host|typeerror/i;
+    const isNetworkError = error instanceof TypeError || netErr.test(message) || (!navigator.onLine);
+    if (isNetworkError) {
+      return '无法连接认证服务器。请确认：① 网络可用；② Supabase 项目未被暂停或删除（项目地址可能已失效，需在 Dashboard 核对）';
+    }
+
     if (message.includes('already registered') || message.includes('already exists') || message.includes('already been registered')) {
       return '该邮箱已被注册，请直接登录';
     }

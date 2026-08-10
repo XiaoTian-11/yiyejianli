@@ -348,38 +348,57 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({ data, onChange, user
 
   const secLabel = getSecondaryLabel();
 
+  // ── 每日翻译次数限制 ──
+  const getDailyTransCount = (): number => {
+    const key = `trans_count_${new Date().toISOString().slice(0, 10)}`;
+    return parseInt(localStorage.getItem(key) || '0', 10);
+  };
+  const incrementDailyTransCount = () => {
+    const key = `trans_count_${new Date().toISOString().slice(0, 10)}`;
+    localStorage.setItem(key, String(getDailyTransCount() + 1));
+  };
+  const checkTransLimit = (): boolean => {
+    const max = userTier === 'member' ? 20 : 1;
+    if (getDailyTransCount() >= max) {
+      onTriggerUpgrade?.('translate');
+      return false;
+    }
+    return true;
+  };
+
   const handleAiTranslate = async () => {
     if (!data.secondaryLanguage) {
       alert("请先选择‘副语言 (Secondary Language)’");
       return;
     }
+    if (!checkTransLimit()) return;
     setTranslating(true);
     setTransError(null);
 
-    // Build flat map
+    // Build flat map (skip empty values to save tokens)
     const textMap: Record<string, string> = {};
-    textMap["personalInfo.fullName"] = data.personalInfo.fullName || '';
-    textMap["personalInfo.jobTitle"] = data.personalInfo.jobTitle || '';
-    textMap["personalInfo.location"] = data.personalInfo.location || '';
+    if (data.personalInfo.fullName) textMap["personalInfo.fullName"] = data.personalInfo.fullName;
+    if (data.personalInfo.jobTitle) textMap["personalInfo.jobTitle"] = data.personalInfo.jobTitle;
+    if (data.personalInfo.location) textMap["personalInfo.location"] = data.personalInfo.location;
     if (data.summary) textMap["summary"] = data.summary;
-    
+
     data.experience.forEach(exp => {
-      textMap[`experience.${exp.id}.company`] = exp.company || '';
-      textMap[`experience.${exp.id}.position`] = exp.position || '';
-      textMap[`experience.${exp.id}.description`] = exp.description || '';
+      if (exp.company) textMap[`experience.${exp.id}.company`] = exp.company;
+      if (exp.position) textMap[`experience.${exp.id}.position`] = exp.position;
+      if (exp.description) textMap[`experience.${exp.id}.description`] = exp.description;
       if (exp.startDate) textMap[`experience.${exp.id}.startDate`] = exp.startDate;
       if (exp.endDate) textMap[`experience.${exp.id}.endDate`] = exp.endDate;
     });
 
     data.education.forEach(edu => {
-      textMap[`education.${edu.id}.school`] = edu.school || '';
-      textMap[`education.${edu.id}.degree`] = edu.degree || '';
+      if (edu.school) textMap[`education.${edu.id}.school`] = edu.school;
+      if (edu.degree) textMap[`education.${edu.id}.degree`] = edu.degree;
     });
 
     data.projects.forEach(proj => {
-      textMap[`projects.${proj.id}.name`] = proj.name || '';
-      textMap[`projects.${proj.id}.description`] = proj.description || '';
-      textMap[`projects.${proj.id}.role`] = proj.role || '';
+      if (proj.name) textMap[`projects.${proj.id}.name`] = proj.name;
+      if (proj.description) textMap[`projects.${proj.id}.description`] = proj.description;
+      if (proj.role) textMap[`projects.${proj.id}.role`] = proj.role;
       if (proj.startDate) textMap[`projects.${proj.id}.startDate`] = proj.startDate;
       if (proj.endDate) textMap[`projects.${proj.id}.endDate`] = proj.endDate;
     });
@@ -389,15 +408,15 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({ data, onChange, user
     }
 
     data.customSections?.forEach(cs => {
-      textMap[`customSection.${cs.id}.title`] = cs.title || '';
+      if (cs.title) textMap[`customSection.${cs.id}.title`] = cs.title;
       cs.items.forEach(item => {
-        textMap[`customSectionItem.${cs.id}.${item.id}.title`] = item.title || '';
-        textMap[`customSectionItem.${cs.id}.${item.id}.content`] = item.content || '';
+        if (item.title) textMap[`customSectionItem.${cs.id}.${item.id}.title`] = item.title;
+        if (item.content) textMap[`customSectionItem.${cs.id}.${item.id}.content`] = item.content;
       });
     });
 
     data.sections.forEach(sec => {
-      textMap[`sectionHeader.${sec.id}`] = sec.title;
+      if (sec.title) textMap[`sectionHeader.${sec.id}`] = sec.title;
     });
 
     try {
@@ -479,12 +498,202 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({ data, onChange, user
       updatedData.displayMode = 'bilingual';
 
       onChange(updatedData);
+      incrementDailyTransCount();
       alert("AI 翻译完成！您的简历已成功翻译。双语排版视图已开启！可以在板块下方继续微调译文。");
     } catch (err: any) {
       console.error(err);
       setTransError(err?.message || "翻译请求出错，请检查服务器连接或稍后再试");
     } finally {
       setTranslating(false);
+    }
+  };
+
+  /** 纯翻译模式：翻译后替换原文（非双语对照） */
+  const handlePureTranslate = async () => {
+    if (!data.secondaryLanguage) {
+      alert("请先选择目标翻译语言");
+      return;
+    }
+    setTranslating(true);
+    setTransError(null);
+
+    // Build flat map (same as bilingual, skip empty)
+    const textMap: Record<string, string> = {};
+    if (data.personalInfo.fullName) textMap["personalInfo.fullName"] = data.personalInfo.fullName;
+    if (data.personalInfo.jobTitle) textMap["personalInfo.jobTitle"] = data.personalInfo.jobTitle;
+    if (data.personalInfo.location) textMap["personalInfo.location"] = data.personalInfo.location;
+    if (data.summary) textMap["summary"] = data.summary;
+
+    data.experience.forEach(exp => {
+      if (exp.company) textMap[`experience.${exp.id}.company`] = exp.company;
+      if (exp.position) textMap[`experience.${exp.id}.position`] = exp.position;
+      if (exp.description) textMap[`experience.${exp.id}.description`] = exp.description;
+      if (exp.startDate) textMap[`experience.${exp.id}.startDate`] = exp.startDate;
+      if (exp.endDate) textMap[`experience.${exp.id}.endDate`] = exp.endDate;
+    });
+
+    data.education.forEach(edu => {
+      if (edu.school) textMap[`education.${edu.id}.school`] = edu.school;
+      if (edu.degree) textMap[`education.${edu.id}.degree`] = edu.degree;
+    });
+
+    data.projects.forEach(proj => {
+      if (proj.name) textMap[`projects.${proj.id}.name`] = proj.name;
+      if (proj.description) textMap[`projects.${proj.id}.description`] = proj.description;
+      if (proj.role) textMap[`projects.${proj.id}.role`] = proj.role;
+      if (proj.startDate) textMap[`projects.${proj.id}.startDate`] = proj.startDate;
+      if (proj.endDate) textMap[`projects.${proj.id}.endDate`] = proj.endDate;
+    });
+
+    if (data.skills && data.skills.length > 0) {
+      textMap["skills"] = data.skills.join(", ");
+    }
+
+    data.customSections?.forEach(cs => {
+      if (cs.title) textMap[`customSection.${cs.id}.title`] = cs.title;
+      cs.items.forEach(item => {
+        if (item.title) textMap[`customSectionItem.${cs.id}.${item.id}.title`] = item.title;
+        if (item.content) textMap[`customSectionItem.${cs.id}.${item.id}.content`] = item.content;
+      });
+    });
+
+    data.sections.forEach(sec => {
+      if (sec.title) textMap[`sectionHeader.${sec.id}`] = sec.title;
+    });
+
+    try {
+      // Backup original content before translating
+      const backup: Record<string, any> = {
+        personalInfo: { ...data.personalInfo },
+        summary: data.summary,
+        experience: data.experience.map(e => ({ ...e })),
+        education: data.education.map(e => ({ ...e })),
+        projects: data.projects.map(p => ({ ...p })),
+        skills: [...data.skills],
+        sections: data.sections.map(s => ({ ...s })),
+        primaryLanguage: data.primaryLanguage || 'zh',
+      };
+      if (data.customSections) {
+        backup.customSections = data.customSections.map(cs => ({
+          ...cs,
+          items: cs.items.map(item => ({ ...item })),
+        }));
+      }
+
+      const response = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          textMap,
+          fromLang: data.primaryLanguage || 'zh',
+          toLang: data.secondaryLanguage,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error((await response.text()) || "Translation failed");
+      }
+
+      const resJson = await response.json();
+      const translated = resJson.translatedMap;
+      if (!translated) {
+        throw new Error("No translation returned in server response.");
+      }
+
+      const updatedData = { ...data };
+
+      // Write translations to PRIMARY fields (replace original)
+      if (translated["personalInfo.fullName"]) updatedData.personalInfo = { ...updatedData.personalInfo, fullName: translated["personalInfo.fullName"] };
+      if (translated["personalInfo.jobTitle"]) updatedData.personalInfo = { ...updatedData.personalInfo, jobTitle: translated["personalInfo.jobTitle"] };
+      if (translated["personalInfo.location"]) updatedData.personalInfo = { ...updatedData.personalInfo, location: translated["personalInfo.location"] };
+      if (translated["summary"]) updatedData.summary = translated["summary"];
+
+      updatedData.experience = data.experience.map(exp => ({
+        ...exp,
+        company: translated[`experience.${exp.id}.company`] || exp.company,
+        position: translated[`experience.${exp.id}.position`] || exp.position,
+        description: translated[`experience.${exp.id}.description`] || exp.description,
+        startDate: translated[`experience.${exp.id}.startDate`] || exp.startDate,
+        endDate: translated[`experience.${exp.id}.endDate`] || exp.endDate,
+      }));
+
+      updatedData.education = data.education.map(edu => ({
+        ...edu,
+        school: translated[`education.${edu.id}.school`] || edu.school,
+        degree: translated[`education.${edu.id}.degree`] || edu.degree,
+      }));
+
+      updatedData.projects = data.projects.map(proj => ({
+        ...proj,
+        name: translated[`projects.${proj.id}.name`] || proj.name,
+        description: translated[`projects.${proj.id}.description`] || proj.description,
+        role: translated[`projects.${proj.id}.role`] || proj.role,
+        startDate: translated[`projects.${proj.id}.startDate`] || proj.startDate,
+        endDate: translated[`projects.${proj.id}.endDate`] || proj.endDate,
+      }));
+
+      if (translated["skills"]) {
+        updatedData.skills = translated["skills"].split(",").map((s: string) => s.trim());
+      }
+
+      if (data.customSections) {
+        updatedData.customSections = data.customSections.map(cs => ({
+          ...cs,
+          title: translated[`customSection.${cs.id}.title`] || cs.title,
+          items: cs.items.map(item => ({
+            ...item,
+            title: translated[`customSectionItem.${cs.id}.${item.id}.title`] || item.title,
+            content: translated[`customSectionItem.${cs.id}.${item.id}.content`] || item.content,
+          })),
+        }));
+      }
+
+      updatedData.sections = data.sections.map(sec => ({
+        ...sec,
+        title: translated[`sectionHeader.${sec.id}`] || sec.title,
+      }));
+
+      // Store backup and switch to target language
+      updatedData.primaryLanguage = data.secondaryLanguage;
+      updatedData.displayMode = 'primary';
+      updatedData._sourceLanguage = data.primaryLanguage || 'zh';
+      updatedData._originalBackup = JSON.stringify(backup);
+
+      const targetName = LANGUAGES.find(l => l.code === data.secondaryLanguage)?.name || data.secondaryLanguage;
+      onChange(updatedData);
+      incrementDailyTransCount();
+      alert(`纯翻译完成！简历内容已替换为${targetName}。可在下方点击「恢复原文」还原。`);
+    } catch (err: any) {
+      console.error(err);
+      setTransError(err?.message || "翻译请求出错，请检查服务器连接或稍后再试");
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  /** 恢复原文：从 _originalBackup 还原翻译前的内容 */
+  const handleRevertOriginal = () => {
+    if (!data._originalBackup) return;
+    try {
+      const backup = JSON.parse(data._originalBackup);
+      const updatedData: ResumeData = {
+        ...data,
+        personalInfo: backup.personalInfo,
+        summary: backup.summary,
+        experience: backup.experience,
+        education: backup.education,
+        projects: backup.projects,
+        skills: backup.skills,
+        sections: backup.sections,
+        primaryLanguage: backup.primaryLanguage || data._sourceLanguage || 'zh',
+        customSections: backup.customSections || data.customSections,
+        _originalBackup: undefined,
+        _sourceLanguage: undefined,
+      };
+      onChange(updatedData);
+    } catch (err) {
+      console.error("恢复原文失败:", err);
+      alert("恢复原文失败，备份数据已损坏");
     }
   };
 
@@ -1217,7 +1426,7 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({ data, onChange, user
           <h3 className="text-sm font-black text-slate-800 tracking-tight uppercase">多语言简历设置</h3>
         </div>
         <p className="text-xs text-slate-400 leading-relaxed font-medium">
-          您可以为这份简历配置一种<b>副翻译语言</b>。开启双语排版模式后，右侧简历模板会进行双语对照渲染，完美展示您优秀的语言功底，适合外企大厂及跨国岗位。
+          您可以为这份简历配置一种<b>副翻译语言</b>。双语对照模式会保留原文并显示译文；纯翻译模式会用译文替换原文，适合直接投递外企。
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
@@ -1274,30 +1483,60 @@ export const ResumeEditor: React.FC<ResumeEditorProps> = ({ data, onChange, user
         </div>
 
         {data.secondaryLanguage && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-5 bg-gradient-to-r from-blue-550/5 from-blue-50 to-indigo-50/50 rounded-3xl border border-blue-100/60 gap-4 mt-3">
-            <div className="space-y-1">
-              <span className="text-xs font-black text-blue-700 block">
-                ✨ 人工智能 AI 智能全套一键翻译
-              </span>
-              <p className="text-[11px] text-slate-500 leading-normal">
-                使用极速的 <b>DeepSeek AI 翻译引擎</b> 把您当前已经填写的简历内容翻译为所选的<b>{LANGUAGES.find(l=>l.code===data.secondaryLanguage)?.name}</b>，可省去逐词手动填写的繁琐。
-              </p>
+          <div className="space-y-3 mt-3">
+            {/* Translation mode buttons */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-5 bg-gradient-to-r from-blue-550/5 from-blue-50 to-indigo-50/50 rounded-3xl border border-blue-100/60 gap-4">
+              <div className="space-y-1">
+                <span className="text-xs font-black text-blue-700 block">
+                  ✨ DeepSeek AI 翻译引擎
+                </span>
+                <p className="text-[11px] text-slate-500 leading-normal">
+                  将简历从 <b>{LANGUAGES.find(l=>l.code===data.primaryLanguage)?.name || '中文'}</b> 翻译为 <b>{LANGUAGES.find(l=>l.code===data.secondaryLanguage)?.name}</b>
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0 flex-wrap">
+                <button
+                  type="button"
+                  disabled={translating}
+                  onClick={handleAiTranslate}
+                  className="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-2xl shadow-sm cursor-pointer transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-1.5"
+                >
+                  {translating ? (
+                    <><span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />翻译中...</>
+                  ) : (
+                    <><Globe className="w-3.5 h-3.5" />双语对照翻译</>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  disabled={translating}
+                  onClick={handlePureTranslate}
+                  className="px-4 py-3 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-2xl border border-slate-200 shadow-sm cursor-pointer transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-1.5"
+                >
+                  {translating ? (
+                    <><span className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />翻译中...</>
+                  ) : (
+                    <><span className="text-sm">🌍</span>纯翻译替换原文</>
+                  )}
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              disabled={translating}
-              onClick={handleAiTranslate}
-              className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-2xl shadow-sm cursor-pointer transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2 shrink-0 self-start sm:self-center"
-            >
-              {translating ? (
-                <>
-                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  AI 正在精心翻译...
-                </>
-              ) : (
-                "一键智能翻译简历"
-              )}
-            </button>
+            {/* Revert bar when pure-translated */}
+            {data._originalBackup && (
+              <div className="flex items-center justify-between p-4 bg-amber-50 border border-amber-200 rounded-3xl">
+                <div className="flex items-center gap-2 text-xs text-amber-700 font-medium">
+                  <span>📝</span>
+                  <span>当前简历已由 <b>{LANGUAGES.find(l=>l.code===data._sourceLanguage)?.name || data._sourceLanguage || '原文'}</b> 纯翻译为 <b>{LANGUAGES.find(l=>l.code===data.primaryLanguage)?.name || data.primaryLanguage}</b></span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRevertOriginal}
+                  className="px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  恢复原文
+                </button>
+              </div>
+            )}
           </div>
         )}
         {transError && (

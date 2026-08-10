@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Check, Crown, CreditCard, Sparkles, ShieldCheck, Zap, Loader2 } from 'lucide-react';
+import { X, Check, Crown, CreditCard, Sparkles, ShieldCheck, Zap } from 'lucide-react';
 import { PLANS } from '../constants';
 import { cn } from '../lib/utils';
+import { PayWithQR } from './PayWithQR';
 
 interface UpgradeModalProps {
   isOpen: boolean;
@@ -15,24 +16,18 @@ interface UpgradeModalProps {
 export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onSuccess, reason, onOpenAgreement }) => {
   const [selectedPlanId, setSelectedPlanId] = useState<string>('month');
   const [step, setStep] = useState<'plans' | 'pay' | 'success'>('plans');
-  const [qrcodeLoading, setQrcodeLoading] = useState(false);
 
   const selectedPlan = PLANS.find((p) => p.type === selectedPlanId) || PLANS[1];
 
   const handleSelectPlan = () => {
-    setQrcodeLoading(true);
     setStep('pay');
-    setTimeout(() => {
-      setQrcodeLoading(false);
-    }, 800);
   };
 
-  const handleCompletePayment = () => {
+  const handlePaymentSuccess = (orderId: string) => {
+    onSuccess(selectedPlanId);
     setStep('success');
     setTimeout(() => {
-      onSuccess(selectedPlanId);
       onClose();
-      // Reset step
       setStep('plans');
     }, 2000);
   };
@@ -48,6 +43,8 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onS
         return '自定义板块数量达到限制，开通尊享会员解锁无限创意自定义板块';
       case 'ats':
         return 'ATS高通过率检测与智能建议是会员专属的高级分析工具';
+      case 'translate':
+        return '每日 AI 翻译次数已达上限，开通会员每日可翻译 20 次';
       default:
         return reason;
     }
@@ -207,64 +204,17 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onS
               )}
 
               {step === 'pay' && (
-                <div className="flex flex-col items-center justify-center py-6 text-center">
-                  {qrcodeLoading ? (
-                    <div className="flex flex-col items-center justify-center p-12 space-y-4">
-                      <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-                      <p className="text-slate-500 text-xs font-bold">正在安全加载保密支付通道...</p>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="font-extrabold text-[#111827] text-lg mb-1">微信 / 支付宝 扫码支付</h4>
-                      <p className="text-slate-500 text-xs mb-6 font-medium">
-                        订阅套餐：<span className="text-slate-800 font-bold">{selectedPlan.name}</span> — 
-                        实付金额：<span className="text-blue-600 font-bold text-sm">¥{selectedPlan.price}</span>
-                      </p>
-
-                      {/* Simulated QR Code containing visual design */}
-                      <div className="relative p-4 bg-slate-50 rounded-3xl border border-slate-100 flex items-center justify-center shadow-lg shadow-slate-100 mb-6 group">
-                        <div className="w-48 h-48 bg-white rounded-2xl border-2 border-slate-200/60 p-3 flex flex-col justify-between relative overflow-hidden">
-                          {/* Simulated high-tech custom lines representing a styled bar-code graphic */}
-                          <div className="grid grid-cols-6 gap-1 w-full h-full opacity-90 transition-all group-hover:scale-95 duration-500">
-                            {[...Array(36)].map((_, idx) => (
-                              <div
-                                key={idx}
-                                className={cn(
-                                  "rounded-sm",
-                                  (idx % 3 === 0 || idx % 4 === 0 || idx < 6 || idx > 30 || idx % 7 === 1) 
-                                    ? "bg-slate-900" 
-                                    : "bg-slate-100"
-                                )}
-                              />
-                            ))}
-                          </div>
-                          
-                          {/* Inner float icon representing secure checkout */}
-                          <div className="absolute inset-x-0 bottom-4 w-fit mx-auto bg-slate-900 border border-amber-300 text-amber-300 text-[10px] py-1 px-3 rounded-full flex items-center gap-1 shadow font-bold">
-                            <Crown className="w-3 h-3 fill-current" />
-                            <span>安全认证支付</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4 max-w-sm w-full mx-auto">
-                        <button
-                          onClick={handleCompletePayment}
-                          className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-xs font-bold transition-all hover:scale-105 active:scale-95 shadow-xl shadow-blue-100 flex items-center justify-center gap-2 cursor-pointer"
-                        >
-                          <ShieldCheck className="w-4 h-4" />
-                          已完成微信或支付宝扫码(点击确认)
-                        </button>
-                        
-                        <button
-                          onClick={() => setStep('plans')}
-                          className="w-full py-3 text-slate-500 hover:text-slate-800 text-xs font-bold transition-all"
-                        >
-                          返回重新选择套餐
-                        </button>
-                      </div>
-                    </>
-                  )}
+                <div className="flex flex-col items-center justify-center py-2">
+                  <h4 className="font-extrabold text-[#111827] text-lg mb-1">微信扫码支付</h4>
+                  <p className="text-slate-500 text-xs mb-3 font-medium">
+                    订阅套餐：<span className="text-slate-800 font-bold">{selectedPlan.name}</span>
+                  </p>
+                  <PayWithQR
+                    planType={selectedPlanId}
+                    onSuccess={handlePaymentSuccess}
+                    onBack={() => setStep('plans')}
+                    compact
+                  />
                 </div>
               )}
 

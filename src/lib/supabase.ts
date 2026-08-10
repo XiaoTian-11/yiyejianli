@@ -3,11 +3,55 @@ import { createClient, User } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables. Check your .env file for VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+// ─── 配置校验：在初始化前暴露常见配置错误，避免"神秘失败" ──────────────────
+export interface SupabaseConfigIssue {
+  ok: boolean;
+  message: string;
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export function validateSupabaseConfig(): SupabaseConfigIssue {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return {
+      ok: false,
+      message: '缺少 VITE_SUPABASE_URL 或 VITE_SUPABASE_ANON_KEY，请在 .env 中配置（参考 .env.example）',
+    };
+  }
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(supabaseUrl)) {
+    return {
+      ok: false,
+      message: `VITE_SUPABASE_URL 格式异常（当前: ${supabaseUrl}），应为 https://<project-ref>.supabase.co 形式`,
+    };
+  }
+  return { ok: true, message: '配置格式正确' };
+}
+
+/** 实际探测项目域名是否可解析/可访问（auth/v1/health 端点） */
+export async function checkSupabaseHealth(): Promise<SupabaseConfigIssue> {
+  const format = validateSupabaseConfig();
+  if (!format.ok) return format;
+  try {
+    const res = await fetch(`${supabaseUrl}/auth/v1/health`, { signal: AbortSignal.timeout(8000) });
+    if (res.ok) return { ok: true, message: `认证服务可达（HTTP ${res.status}）` };
+    return { ok: false, message: `认证服务返回 HTTP ${res.status}，项目可能被暂停` };
+  } catch (err: any) {
+    const msg = String(err?.message || err);
+    if (/failed to fetch|load failed|networkerror|could not resolve/i.test(msg)) {
+      return {
+        ok: false,
+        message: `无法连接到 ${supabaseUrl}（域名可能不存在、项目被删除或暂停）。请到 Supabase Dashboard 确认项目状态`,
+      };
+    }
+    return { ok: false, message: `连接异常: ${msg}` };
+  }
+}
+
+// 初始化时先做格式校验（不阻塞启动，仅告警）
+const configIssue = validateSupabaseConfig();
+if (!configIssue.ok) {
+  console.error('[壹页简历] Supabase 配置异常:', configIssue.message);
+}
+
+export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
   auth: {
     autoRefreshToken: true,
     persistSession: true,

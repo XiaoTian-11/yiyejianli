@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ResumeData } from '../types';
+import { ResumeData, PersonalInfo } from '../types';
 import { 
   Award, 
   CheckCircle2, 
@@ -88,7 +88,7 @@ export const ResumeScoring: React.FC<ResumeScoringProps> = ({ data, onChange }) 
     }[] = [];
 
     // --- 1. COMPLETENESS (Max 40 points) ---
-    const info = data.personalInfo || {};
+    const info: PersonalInfo = data.personalInfo || ({} as PersonalInfo);
     let infoFieldsCount = 0;
     if (info.fullName) infoFieldsCount++;
     if (info.email) infoFieldsCount++;

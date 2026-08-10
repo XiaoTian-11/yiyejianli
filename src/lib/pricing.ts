@@ -1,5 +1,5 @@
-import { PLANS, type Plan } from '../constants';
-import type { PlanType } from '../types';
+import { PLANS } from '../constants';
+import type { Plan, PlanType } from '../types';
 
 /**
  * 根据方案类型计算会员到期日

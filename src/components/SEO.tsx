@@ -47,10 +47,12 @@ export const SEO: React.FC<SEOProps> = ({
           "description": defaultDesc,
           "applicationCategory": "BusinessApplication",
           "operatingSystem": "All",
+          // offers 如实标注最低起价（单次导出 5.9 元），避免结构化数据与实际定价不符
           "offers": {
             "@type": "Offer",
-            "price": "0",
-            "priceCurrency": "CNY"
+            "price": "5.9",
+            "priceCurrency": "CNY",
+            "description": "简历导出单次付费起点价，另有周/月/季/年会员套餐可选"
           }
         })}
       </script>

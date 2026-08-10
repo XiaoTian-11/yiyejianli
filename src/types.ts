@@ -92,6 +92,10 @@ export interface ResumeData {
   displayMode?: 'primary' | 'secondary' | 'bilingual';
   summary_secondary?: string;
   skills_secondary?: string[];
+  /** 纯翻译模式：记录翻译前的原始语言，如 'zh' */
+  _sourceLanguage?: string;
+  /** 纯翻译模式：翻译前的原始内容 JSON 备份，用于恢复原文 */
+  _originalBackup?: string;
 }
 
 export type TemplateId = string;

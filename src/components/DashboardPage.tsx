@@ -18,13 +18,17 @@ import {
   Wallet
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { Order, DashboardSection, User as AppUser } from '../types';
+import { DashboardSection, User as AppUser } from '../types';
 import { ResumeDocument, formatTimeAgo } from '../lib/supabaseService';
+import { ClientOrder, ORDER_STATUS_TEXT } from '../lib/orderService';
+import { PLANS } from '../constants';
+import { SEO } from './SEO';
 
 interface DashboardPageProps {
   user: any;
   appUser: AppUser | null;
   resumes: ResumeDocument[];
+  orders: ClientOrder[];
   onNewResume: () => void;
   onEditResume: (id: string) => void;
   onDeleteResume: (id: string) => Promise<void>;
@@ -34,12 +38,13 @@ interface DashboardPageProps {
   onTriggerUpgrade?: (reason?: string) => void;
 }
 
-export const DashboardPage: React.FC<DashboardPageProps> = ({ 
-  user, 
+export const DashboardPage: React.FC<DashboardPageProps> = ({
+  user,
   appUser,
   resumes,
-  onNewResume, 
-  onEditResume, 
+  orders,
+  onNewResume,
+  onEditResume,
   onDeleteResume,
   onRenameResume,
   onGoToPayment,
@@ -52,11 +57,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [editingResumeId, setEditingResumeId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [deletingResumeId, setDeletingResumeId] = useState<string | null>(null);
-
-  const orders: Order[] = [
-    { id: '1', title: '年度尊享会员', orderNumber: 'ORD-88219', date: '2023年10月12日', amount: 144.00, status: 'completed' },
-    { id: '2', title: '专家精修附加服务', orderNumber: 'ORD-77402', date: '2023年9月05日', amount: 49.00, status: 'completed' },
-  ];
 
   const handleTriggerRename = (id: string, currentName: string) => {
     setEditingResumeId(id);
@@ -134,6 +134,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen relative">
+      <SEO
+        title="个人中心 - 我的简历与会员"
+        description="管理我的简历、查看订单记录与会员权益，随时续费升级，掌握求职进度。"
+        keywords="壹页简历, 个人中心, 我的简历, 会员中心, 简历管理, 订单查询"
+      />
       {/* Sidebar - Fixed on Desktop */}
       <aside className="lg:w-72 w-full lg:fixed lg:left-0 lg:top-24 lg:bottom-0 bg-white/40 backdrop-blur-xl border-r border-slate-100 lg:overflow-y-auto z-30">
         <div className="p-8 space-y-10">
@@ -355,15 +360,15 @@ const ResumesView: React.FC<{
   </section>
 );
 
-const Overview: React.FC<{ 
-  resumes: ResumeDocument[], 
-  orders: Order[], 
-  onNew: () => void, 
-  onEdit: (id: string) => void, 
+const Overview: React.FC<{
+  resumes: ResumeDocument[],
+  orders: ClientOrder[],
+  onNew: () => void,
+  onEdit: (id: string) => void,
   onRename: (id: string, name: string) => void,
   onDelete: (id: string) => void,
-  onManagePlan: () => void, 
-  appUser: AppUser | null 
+  onManagePlan: () => void,
+  appUser: AppUser | null
 }> = ({ resumes, orders, onNew, onEdit, onRename, onDelete, onManagePlan, appUser }) => (
   <div className="space-y-16">
     {/* Member Banner */}
@@ -425,23 +430,26 @@ const Overview: React.FC<{
       </div>
       <div className="bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden shadow-sm">
         <div className="divide-y divide-slate-50">
-          {orders.map(order => (
+          {orders.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-sm font-medium">
+              暂无订单，去开通会员或购买导出吧。
+            </div>
+          ) : orders.slice(0, 3).map(order => (
             <div key={order.id} className="p-6 flex items-center justify-between hover:bg-slate-50 transition-colors">
               <div className="flex items-center gap-6">
                 <div className="w-12 h-12 bg-macaron-mint/30 rounded-xl flex items-center justify-center text-[#2d5a4c]">
-                  {order.title.includes('会员') ? <Star className="w-6 h-6" /> : <FileText className="w-6 h-6" />}
+                  {order.planType === 'single_export' ? <FileText className="w-6 h-6" /> : <Star className="w-6 h-6" />}
                 </div>
                 <div>
-                  <h4 className="font-bold text-slate-800">{order.title}</h4>
-                  <p className="text-xs text-slate-400 font-medium">订单编号 {order.orderNumber} • {order.date}</p>
+                  <h4 className="font-bold text-slate-800">{orderPlanName(order.planType)}</h4>
+                  <p className="text-xs text-slate-400 font-medium">订单编号 {order.id} • {formatOrderDate(order.createdAt)}</p>
                 </div>
               </div>
               <div className="text-right space-y-1">
                 <p className="font-black text-slate-900">¥{order.amount.toFixed(2)}</p>
-                <div className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[#2d5a4c] justify-end">
-                  <div className="w-1 h-1 bg-[#2d5a4c] rounded-full" />
-                  已完成
-                </div>
+                <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest rounded-full px-2 py-0.5 ${ORDER_STATUS_STYLE[order.status].cls}`}>
+                  {ORDER_STATUS_TEXT[order.status]}
+                </span>
               </div>
             </div>
           ))}
@@ -537,7 +545,7 @@ const ResumeCard: React.FC<{
   );
 };
 
-const OrdersView: React.FC<{ orders: Order[] }> = ({ orders }) => (
+const OrdersView: React.FC<{ orders: ClientOrder[] }> = ({ orders }) => (
   <div className="space-y-8">
      <div className="space-y-2">
       <h2 className="text-4xl font-display font-bold">我的订单</h2>
@@ -556,29 +564,38 @@ const OrdersView: React.FC<{ orders: Order[] }> = ({ orders }) => (
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50">
-          {orders.map(order => (
-            <tr key={order.id} className="hover:bg-slate-50/50 transition-colors">
-              <td className="px-8 py-6">
-                <span className="font-bold text-slate-800">{order.title}</span>
-              </td>
-              <td className="px-8 py-6">
-                <span className="text-sm font-medium text-slate-500 font-mono">{order.orderNumber}</span>
-              </td>
-              <td className="px-8 py-6">
-                <span className="text-sm font-medium text-slate-500">{order.date}</span>
-              </td>
-              <td className="px-8 py-6 text-right">
-                <span className="font-black text-slate-900">¥{order.amount.toFixed(2)}</span>
-              </td>
-              <td className="px-8 py-6">
-                <div className="flex items-center justify-center">
-                  <div className="px-4 py-1.5 bg-macaron-mint/30 text-[#2d5a4c] rounded-full text-[10px] font-black uppercase tracking-widest">
-                    已完成
-                  </div>
-                </div>
+          {orders.length === 0 ? (
+            <tr>
+              <td colSpan={5} className="px-8 py-16 text-center text-slate-400 text-sm font-medium">
+                暂无订单记录，去开通会员或购买导出吧。
               </td>
             </tr>
-          ))}
+          ) : orders.map(order => {
+            const style = ORDER_STATUS_STYLE[order.status];
+            return (
+              <tr key={order.id} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-8 py-6">
+                  <span className="font-bold text-slate-800">{orderPlanName(order.planType)}</span>
+                </td>
+                <td className="px-8 py-6">
+                  <span className="text-sm font-medium text-slate-500 font-mono">{order.id}</span>
+                </td>
+                <td className="px-8 py-6">
+                  <span className="text-sm font-medium text-slate-500">{formatOrderDate(order.createdAt)}</span>
+                </td>
+                <td className="px-8 py-6 text-right">
+                  <span className="font-black text-slate-900">¥{order.amount.toFixed(2)}</span>
+                </td>
+                <td className="px-8 py-6">
+                  <div className="flex items-center justify-center">
+                    <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${style.cls}`}>
+                      {style.text}
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -680,7 +697,7 @@ const MemberCenter: React.FC<{ onUpgrade: (id: string) => void, appUser: AppUser
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-left max-w-5xl mx-auto">
         <PlanPreview title="基础版" price="免费" features={["1 份简易模板", "实时预览"]} />
         <PlanPreview title="季度会员" price="¥49" features={["无限模板", "内容优化", "PDF 导出"]} highlight onSelect={() => onUpgrade('quarter')} />
-        <PlanPreview title="年度尊享" price="¥144" features={["所有高级功能", "1对1咨询折扣", "优先支持"]} onSelect={() => onUpgrade('annual')} />
+        <PlanPreview title="年度尊享" price="¥144" features={["所有高级功能", "1对1咨询折扣", "优先支持"]} onSelect={() => onUpgrade('year')} />
       </div>
     </div>
   </div>
@@ -705,7 +722,7 @@ const PlanPreview: React.FC<{ title: string, price: string, features: string[], 
       ))}
     </div>
     {price !== '免费' && (
-      <button 
+      <button
         onClick={onSelect}
         className="w-full py-3 bg-slate-900 text-white rounded-xl text-xs font-bold hover:scale-105 transition-all"
       >
@@ -714,3 +731,24 @@ const PlanPreview: React.FC<{ title: string, price: string, features: string[], 
     )}
   </div>
 );
+
+/** 订单状态 → 徽章样式 */
+const ORDER_STATUS_STYLE: Record<ClientOrder['status'], { text: string; cls: string }> = {
+  pending: { text: '待支付', cls: 'bg-amber-50 text-amber-600' },
+  paid: { text: '已支付', cls: 'bg-blue-50 text-blue-600' },
+  completed: { text: '已完成', cls: 'bg-macaron-mint/30 text-[#2d5a4c]' },
+  expired: { text: '已过期', cls: 'bg-slate-100 text-slate-500' },
+  cancelled: { text: '已取消', cls: 'bg-slate-100 text-slate-400' },
+};
+
+/** 订单方案类型 → 展示名（优先读取真实 PLANS，找不到时回退到通用文案） */
+const orderPlanName = (planType: string): string =>
+  PLANS.find((p) => p.type === planType)?.name || '服务订单';
+
+/** ISO 时间 → YYYY年M月D日 */
+const formatOrderDate = (iso?: string): string => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+};

@@ -1,9 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useReactToPrint } from 'react-to-print';
+import { useLocation, useNavigate, Routes, Route, Navigate } from 'react-router-dom';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { Download, FileText, Layout, Eye, Settings2, Github, Award, Menu, X, LogOut, User as UserIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ResumeEditor } from './components/ResumeEditor';
 import { ResumePreview } from './components/ResumePreview';
 import { ResumeScoring } from './components/ResumeScoring';
+import { SEO } from './components/SEO';
 import { AuthModal } from './components/AuthModal';
 import { UpgradeModal } from './components/UpgradeModal';
 import { ExportModal } from './components/ExportModal';
@@ -11,7 +14,8 @@ import { AgreementModal } from './components/AgreementModal';
 import { auth, onAuthStateChanged, signOut } from './lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import { saveResume, getResume, getResumesList, saveResumeWithId, deleteResume, renameResume, createNewResume, ResumeDocument } from './lib/supabaseService';
-import { getUser, checkAndDowngrade } from './lib/supabaseUserService';
+import { getUser, checkAndDowngrade, updateUser } from './lib/supabaseUserService';
+import { getMyOrders, ClientOrder } from './lib/orderService';
 import { DashboardPage } from './components/DashboardPage';
 import { PaymentPage } from './components/PaymentPage';
 import { LandingPage } from './pages/LandingPage';
@@ -22,12 +26,66 @@ import { INDUSTRY_SAMPLES, TEMPLATE_INDUSTRY_MAP } from './constants/industrySam
 import { ResumeData, TemplateId, Page, User as AppUser, PlanType } from './types';
 import { cn } from './lib/utils';
 import { calculateMemberUntil } from './lib/pricing';
+import { PAGE_PATH, isProtectedPath } from './lib/routes';
 import { motion, AnimatePresence } from 'motion/react';
 
 // Removed local Page type definition
 
+interface AuthGateProps {
+  authLoading: boolean;
+  user: User | any | null;
+  currentPath: string;
+  onRequestLogin: (path?: string) => void;
+  children: React.ReactNode;
+}
+
+/**
+ * 受保护页面守卫：未登录访问时自动弹一次登录框（同路径只提示一次），
+ * 显示占位牌；登录成功后由 onAuthStateChanged 跳回目标页。
+ * authLoading 为 true 时（会话仍在恢复）不触发提示，避免误弹。
+ */
+const AuthGate: React.FC<AuthGateProps> = ({ authLoading, user, currentPath, onRequestLogin, children }) => {
+  const promptedPathRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (currentPath === promptedPathRef.current) return; // 同路径只提示一次
+    promptedPathRef.current = currentPath;
+    if (!user) onRequestLogin(currentPath);
+  }, [authLoading, user, currentPath]);
+
+  if (authLoading) {
+    return (
+      <div className="py-40 text-center text-slate-400 text-sm font-bold">
+        正在验证登录状态...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="py-40 text-center">
+        <p className="text-slate-500 text-sm font-bold mb-4">此页面需要登录后访问</p>
+        <button
+          onClick={() => onRequestLogin(currentPath)}
+          className="px-6 py-2.5 bg-slate-900 text-white rounded-2xl text-sm font-bold hover:scale-105 active:scale-95 transition-all shadow-xl shadow-slate-200"
+        >
+          立即登录
+        </button>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+};
+
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<Page>('home');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const pathname = location.pathname;
+  // authLoading 兜底首帧竞态：user 异步加载期间，守卫须先等它变为 false，
+  // 否则已登录用户刷新 /dashboard 会被误判为未登录而误弹登录框
+  const [authLoading, setAuthLoading] = useState(true);
   const [selectedLandingTemplate, setSelectedLandingTemplate] = useState<TemplateId | undefined>(undefined);
   const [data, setData] = useState<ResumeData>(INITIAL_DATA);
   const [templateId, setTemplateId] = useState<TemplateId>('modern');
@@ -42,6 +100,7 @@ export default function App() {
   const [selectedPlanId, setSelectedPlanId] = useState<string>('month');
   const [showScoring, setShowScoring] = useState(false);
   const [resumes, setResumes] = useState<ResumeDocument[]>([]);
+  const [orders, setOrders] = useState<ClientOrder[]>([]);
   const [activeResumeId, setActiveResumeId] = useState<string | null>(null);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState<string>('templates');
@@ -75,6 +134,12 @@ export default function App() {
     }
   };
 
+  const refreshOrders = async (uId: string) => {
+    const list = await getMyOrders(uId);
+    setOrders(list);
+    return list;
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
@@ -83,6 +148,7 @@ export default function App() {
         setUser(normalizedUser);
         // Load list and set active
         const list = await refreshResumesList(normalizedUser.uid);
+        refreshOrders(normalizedUser.uid);
         if (list.length > 0) {
           setActiveResumeId(list[0].id);
           setData(list[0].data);
@@ -124,16 +190,19 @@ export default function App() {
           remainingAtsChecks: 0,
         });
 
-        // 仅在顶部导航"登录"按钮触发时才跳转到个人中心，其他入口登录后留在原页面
+        // 登录前访问了受保护页面（如 /dashboard）则跳回目标页；否则留在原页面
         if (pendingLoginRedirect.current) {
-          setCurrentPage(pendingLoginRedirect.current);
+          navigate(pendingLoginRedirect.current);
           pendingLoginRedirect.current = null;
         }
+        setAuthLoading(false);
       } else {
         setUser(null);
         setAppUser(null);
         setResumes([]);
+        setOrders([]);
         setActiveResumeId(null);
+        setAuthLoading(false);
       }
     });
     return () => unsubscribe();
@@ -143,7 +212,8 @@ export default function App() {
     signOut(auth).then(() => {
       setResumes([]);
       setActiveResumeId(null);
-      setCurrentPage('home');
+      navigate('/');
+      setIsAuthModalOpen(false);
     });
   };
 
@@ -187,7 +257,7 @@ export default function App() {
       setData(res.data);
       setTemplateId(res.templateId || 'modern');
       lastSavedDataRef.current = JSON.stringify(res.data);
-      setCurrentPage('builder');
+      navigate(PAGE_PATH.builder);
     }
   };
 
@@ -232,24 +302,77 @@ export default function App() {
 
   const componentRef = useRef<HTMLDivElement>(null);
 
-  const handlePrint = useReactToPrint({
-    contentRef: componentRef,
-    documentTitle: `${(data.personalInfo.fullName || 'Resume').replace(/\s+/g, '_')}_PDF`,
-  });
+  const handleExportPDF = async () => {
+    const PAGE_WIDTH = 794;
+    const PAGE_HEIGHT = 1123;
+    const A4_WIDTH = 595.28;
+    const A4_HEIGHT = 841.89;
 
-  const handlePurchaseSuccess = (planType: string) => {
+    const exportContainer = componentRef.current;
+    if (!exportContainer) return;
+
+    try {
+      // Clone the container to avoid disrupting visible UI
+      const clone = exportContainer.cloneNode(true) as HTMLElement;
+      clone.style.transform = 'none';
+      clone.style.transformOrigin = 'top left';
+      clone.style.width = `${PAGE_WIDTH}px`;
+      clone.style.position = 'absolute';
+      clone.style.top = '-9999px';
+      clone.style.left = '0';
+      document.body.appendChild(clone);
+
+      const pageElements = clone.querySelectorAll('.resume-print-page');
+      const pdf = new jsPDF('p', 'pt', 'a4');
+
+      for (let i = 0; i < pageElements.length; i++) {
+        const pageEl = pageElements[i] as HTMLElement;
+        // Clean visual styles for clean PDF capture
+        pageEl.style.borderRadius = '0';
+        pageEl.style.boxShadow = 'none';
+        pageEl.style.margin = '0';
+        pageEl.style.border = 'none';
+        // Hide print-only elements (page badges etc.)
+        pageEl.querySelectorAll('[class*="print:hidden"]').forEach((el) => {
+          (el as HTMLElement).style.display = 'none';
+        });
+
+        const canvas = await html2canvas(pageEl, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+        } as any);
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        if (i > 0) pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, 0, A4_WIDTH, A4_HEIGHT);
+      }
+
+      document.body.removeChild(clone);
+
+      const name = data.personalInfo.fullName || 'Resume';
+      pdf.save(`${name.replace(/\s+/g, '_')}_简历.pdf`);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+    }
+  };
+
+  const handlePurchaseSuccess = async (planType: string) => {
+    if (!user) return;
+    const uid = user.uid || user.id;
+
+    // 乐观更新 UI：单次导出 +1 次配额；订阅则升级为会员
     if (planType === 'single_export') {
-      // 单次导出：增加次数后自动触发导出
       setAppUser(prev => prev ? {
         ...prev,
         remainingPdfExports: (prev.remainingPdfExports || 0) + 1,
       } : prev);
       setIsExportModalOpen(false);
       setTimeout(() => {
-        handlePrint();
+        handleExportPDF();
       }, 500);
     } else {
-      // 订阅方案：升级为会员
       setAppUser(prev => prev ? {
         ...prev,
         tier: 'member',
@@ -258,169 +381,148 @@ export default function App() {
       } : prev);
       setIsExportModalOpen(false);
     }
+
+    // 从服务端拉取权威用户数据（支付回调 completeOrder 已写入 users 表），
+    // 避免本地状态与服务端不一致导致刷新后权益丢失
+    const { user: fresh } = await getUser(uid);
+    if (fresh) setAppUser({ ...fresh, email: user.email || fresh.email });
+    // 刷新"我的订单"列表
+    refreshOrders(uid);
   };
 
-  const NavLink = ({ page, label }: { page: Page; label: string }) => (
-    <button
-      onClick={() => {
-        setSelectedLandingTemplate(undefined);
-        setCurrentPage(page);
-        setMobileMenuOpen(false);
-      }}
-      className={cn(
-        "px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 relative group",
-        currentPage === page 
-          ? "text-blue-600" 
-          : "text-slate-500 hover:text-slate-900"
-      )}
-    >
-      {label}
-      {currentPage === page && (
-        <motion.div 
-          layoutId="nav-pill"
-          className="absolute inset-0 bg-blue-50/50 -z-10 rounded-xl border border-blue-100"
-        />
-      )}
-    </button>
-  );
-
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'home':
-        return (
-          <LandingPage 
-            data={data}
-            onStart={() => {
-              setSelectedLandingTemplate(undefined);
-              setCurrentPage('templates');
-            }} 
-            onSelectTemplate={(id) => {
-              setSelectedLandingTemplate(id);
-              setCurrentPage('templates');
-            }}
+  const NavLink = ({ page, label }: { page: Page; label: string }) => {
+    const active = pathname === PAGE_PATH[page];
+    return (
+      <button
+        onClick={() => {
+          setSelectedLandingTemplate(undefined);
+          navigate(PAGE_PATH[page]);
+          setMobileMenuOpen(false);
+        }}
+        className={cn(
+          "px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 relative group",
+          active
+            ? "text-blue-600"
+            : "text-slate-500 hover:text-slate-900"
+        )}
+      >
+        {label}
+        {active && (
+          <motion.div
+            layoutId="nav-pill"
+            className="absolute inset-0 bg-blue-50/50 -z-10 rounded-xl border border-blue-100"
           />
-        );
-      case 'templates':
-        return (
-          <TemplatesPage 
-            userTier={appUser?.tier || 'guest'} 
-            initialPreviewTemplateId={selectedLandingTemplate}
-            data={data}
-            onTriggerUpgrade={(reason) => triggerUpgrade(reason || 'templates')}
-            onSelect={async (id) => {
-                // 未登录时只弹授权窗，不进入编辑器
-                if (!user) {
-                  setIsAuthModalOpen(true);
-                  return;
-                }
-                try {
-                  setTemplateId(id);
+        )}
+      </button>
+    );
+  };
 
-                  const templateNames: Record<string, string> = {
-                    modern: '现代简约简历',
-                    classic: '经典学术简历',
-                    minimal: '极简创意简历',
-                    executive: '大厂高通过率简历',
-                    student: '应届生校招简历',
-                    tech_focused: '开源极客简历',
-                    finance_elite: '金融精英简历',
-                    medical_academic: '医疗科研简历',
-                    creative_designer: '创意视觉设计简历',
-                    engineering_tech: '工程建设大厂简历'
-                  };
-                  const newName = `${templateNames[id] || '求职简历'}_${new Date().toLocaleDateString('zh-CN', {month:'numeric', day:'numeric'})}`;
+  // 未登录访问受保护页面时：记录要跳回的目标路径并弹出登录框，登录成功后由
+  // onAuthStateChanged 统一跳转（单一出口，避免登录成功瞬间 onClose 与 user 竞态）
+  const requestLogin = (redirectTo?: string) => {
+    if (redirectTo && isProtectedPath(redirectTo)) {
+      pendingLoginRedirect.current = redirectTo;
+    }
+    setIsAuthModalOpen(true);
+  };
 
-                  const industryKey = TEMPLATE_INDUSTRY_MAP[id] || 'product';
-                  const initialIndustryData = INDUSTRY_SAMPLES[industryKey]?.data || INITIAL_DATA;
+  // 模板页选中模板 → 创建简历并进入编辑器
+  const handleTemplateSelect = async (id: TemplateId) => {
+    // 未登录时只弹登录框，登录后跳回编辑器
+    if (!user) {
+      requestLogin(PAGE_PATH.builder);
+      return;
+    }
+    try {
+      setTemplateId(id);
 
-                  let newId;
-                  try {
-                    newId = await createNewResume(user.uid, newName, id, initialIndustryData);
-                  } catch (err) {
-                    console.error("Failed to create resume in storage", err);
-                    newId = 'temp_' + Math.random().toString(36).substring(2, 9) + '_' + user.uid;
-                  }
+      const templateNames: Record<string, string> = {
+        modern: '现代简约简历',
+        classic: '经典学术简历',
+        minimal: '极简创意简历',
+        executive: '大厂高通过率简历',
+        student: '应届生校招简历',
+        tech_focused: '开源极客简历',
+        finance_elite: '金融精英简历',
+        medical_academic: '医疗科研简历',
+        creative_designer: '创意视觉设计简历',
+        engineering_tech: '工程建设大厂简历'
+      };
+      const newName = `${templateNames[id] || '求职简历'}_${new Date().toLocaleDateString('zh-CN', {month:'numeric', day:'numeric'})}`;
 
-                  setActiveResumeId(newId);
-                  setData(initialIndustryData);
-                  lastSavedDataRef.current = JSON.stringify(initialIndustryData);
+      const industryKey = TEMPLATE_INDUSTRY_MAP[id] || 'product';
+      const initialIndustryData = INDUSTRY_SAMPLES[industryKey]?.data || INITIAL_DATA;
 
-                  try {
-                    await refreshResumesList(user.uid);
-                  } catch (err) {
-                    console.error("Failed to refresh resumes list", err);
-                  }
+      let newId;
+      try {
+        newId = await createNewResume(user.uid, newName, id, initialIndustryData);
+      } catch (err) {
+        console.error("Failed to create resume in storage", err);
+        newId = 'temp_' + Math.random().toString(36).substring(2, 9) + '_' + user.uid;
+      }
 
-                  setCurrentPage('builder');
-                } catch (overallErr) {
-                  console.error("Error during template selection:", overallErr);
-                }
-            }}
-          />
-        );
-      case 'pricing':
-        return <PricingPage currentTier={appUser?.tier || 'guest'} onSelectPlan={(id) => {
-          if (!user) {
-            setIsAuthModalOpen(true);
-            return;
-          }
-          setSelectedPlanId(id);
-          setCurrentPage('payment');
-        }} />;
-      case 'payment':
-        return (
-          <PaymentPage 
-            planId={selectedPlanId} 
-            onBack={() => setCurrentPage('pricing')} 
-            onSuccess={() => {
-              // Upgrading user in-memory
-              if (appUser) {
-                setAppUser({
-                  ...appUser,
-                  tier: 'member',
-                  memberUntil: calculateMemberUntil(selectedPlanId),
-                  remainingPdfExports: 999,
-                });
-              }
-              setCurrentPage('dashboard');
-            }}
-          />
-        );
-      case 'builder':
-        return renderBuilder();
-      case 'dashboard':
-        return (
-          <DashboardPage 
-            user={user} 
-            appUser={appUser}
-            resumes={resumes}
-            onNewResume={() => setCurrentPage('templates')} 
-            onEditResume={handleEditResume}
-            onDeleteResume={handleDeleteResume}
-            onRenameResume={handleRenameResume}
-            onGoToPayment={(planId) => {
-              if (!user) {
-                setIsAuthModalOpen(true);
-                return;
-              }
-              setSelectedPlanId(planId);
-              setCurrentPage('payment');
-            }}
-            onGoToTemplates={() => setCurrentPage('templates')}
-            onTriggerUpgrade={(reason) => triggerUpgrade(reason || 'limit')}
-          />
-        );
-      default:
-        return <LandingPage onStart={() => setCurrentPage('templates')} />;
+      setActiveResumeId(newId);
+      setData(initialIndustryData);
+      lastSavedDataRef.current = JSON.stringify(initialIndustryData);
+
+      try {
+        await refreshResumesList(user.uid);
+      } catch (err) {
+        console.error("Failed to refresh resumes list", err);
+      }
+
+      navigate(PAGE_PATH.builder);
+    } catch (overallErr) {
+      console.error("Error during template selection:", overallErr);
     }
   };
 
+  // 定价页选中方案 → 跳转支付页
+  const handleSelectPlan = (id: string) => {
+    if (!user) {
+      requestLogin(PAGE_PATH.payment);
+      return;
+    }
+    setSelectedPlanId(id);
+    navigate(PAGE_PATH.payment);
+  };
+
+  // 路由切换时回到页面顶部（模拟传统多页跳转体验）
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
+  // 直接访问 /builder（URL 直达/刷新）且已登录但没有简历时，自动创建一份草稿，
+  // 否则编辑器里的内容因缺少简历 id 而无法保存。依赖 authLoading 保证在会话恢复
+  // 完成（activeResumeId 已定）后才判断，避免与简历列表加载产生竞态。
+  useEffect(() => {
+    if (authLoading || !user || activeResumeId || location.pathname !== PAGE_PATH.builder) return;
+    let cancelled = false;
+    const create = async () => {
+      try {
+        const newId = await createNewResume(user.uid, '我的简历', 'modern', data);
+        if (cancelled) return;
+        setActiveResumeId(newId);
+      } catch (err) {
+        console.error('Failed to auto-create resume:', err);
+      }
+    };
+    create();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user, activeResumeId, location.pathname]);
+
   const renderBuilder = () => (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className="max-w-7xl mx-auto p-4 md:p-8"
     >
+      <SEO
+        title="在线简历编辑器"
+        description="在线编辑专业简历，支持实时预览与智能诊断，一键导出 PDF，打造属于你的一页纸简历。"
+        keywords="在线简历, 简历编辑器, 简历制作, 简历预览, PDF导出, 壹页简历"
+      />
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
         {/* Editor */}
         <div className={cn(
@@ -429,8 +531,8 @@ export default function App() {
         )}>
           <header className="flex items-center justify-between px-2">
             <div className="flex items-center gap-4">
-              <button 
-                onClick={() => setCurrentPage('dashboard')}
+              <button
+                onClick={() => navigate(PAGE_PATH.dashboard)}
                 className="p-2 text-slate-400 hover:text-slate-900 bg-white shadow-sm border border-slate-100 rounded-xl transition-all hover:scale-105 active:scale-95"
               >
                 <ChevronLeft className="w-5 h-5" />
@@ -564,11 +666,14 @@ export default function App() {
                     // 导出权限检查
                     if (appUser?.tier === 'member') {
                       console.log('Member: exporting PDF...');
-                      handlePrint();
+                      handleExportPDF();
                     } else if ((appUser?.remainingPdfExports ?? 0) > 0) {
                       console.log('Consuming export quota...');
-                      setAppUser(prev => prev ? { ...prev, remainingPdfExports: prev.remainingPdfExports - 1 } : prev);
-                      handlePrint();
+                      const newQuota = (appUser?.remainingPdfExports ?? 0) - 1;
+                      setAppUser(prev => prev ? { ...prev, remainingPdfExports: newQuota } : prev);
+                      // 配额消耗持久化到 users 表，刷新后不丢失
+                      void updateUser(user.uid, { remaining_pdf_exports: newQuota });
+                      handleExportPDF();
                     } else {
                       console.log('No export quota, showing purchase modal...');
                       setIsExportModalOpen(true);
@@ -616,7 +721,7 @@ export default function App() {
         )}>
           <div className="flex items-center justify-between">
             <button 
-              onClick={() => setCurrentPage('home')}
+              onClick={() => navigate(PAGE_PATH.home)}
               className="flex items-center gap-2 group"
             >
               <div className="bg-slate-900 p-2 rounded-2xl group-hover:scale-110 transition-transform">
@@ -636,16 +741,16 @@ export default function App() {
               
               {user ? (
                 <div className="flex items-center gap-3 ml-2">
-                  <button 
-                    onClick={() => setCurrentPage('dashboard')}
+                  <button
+                    onClick={() => navigate(PAGE_PATH.dashboard)}
                     className={cn(
                       "flex items-center gap-2 px-3 py-1.5 border rounded-xl transition-all",
-                      currentPage === 'dashboard' 
-                        ? "bg-blue-50 border-blue-200 text-blue-600" 
+                      pathname === PAGE_PATH.dashboard
+                        ? "bg-blue-50 border-blue-200 text-blue-600"
                         : "bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100"
                     )}
                   >
-                    <UserIcon className={cn("w-4 h-4", currentPage === 'dashboard' ? "text-blue-500" : "text-slate-400")} />
+                    <UserIcon className={cn("w-4 h-4", pathname === PAGE_PATH.dashboard ? "text-blue-500" : "text-slate-400")} />
                     <span className="text-xs font-bold">
                       {user.phoneNumber || user.email || '普通账户'}
                     </span>
@@ -660,7 +765,7 @@ export default function App() {
                 </div>
               ) : (
                 <button
-                  onClick={() => { pendingLoginRedirect.current = 'dashboard'; setIsAuthModalOpen(true); }}
+                  onClick={() => requestLogin(PAGE_PATH.dashboard)}
                   className="px-6 py-2.5 bg-slate-100 text-slate-900 rounded-2xl text-sm font-bold hover:bg-slate-200 transition-all"
                 >
                   登录
@@ -668,7 +773,7 @@ export default function App() {
               )}
 
               <button
-                onClick={() => setCurrentPage('templates')}
+                onClick={() => navigate(PAGE_PATH.templates)}
                 className="px-6 py-2.5 bg-slate-900 text-white rounded-2xl text-sm font-bold hover:scale-105 active:scale-95 transition-all shadow-xl shadow-slate-200"
               >
                 开始制作
@@ -696,15 +801,15 @@ export default function App() {
             className="fixed inset-x-6 top-28 z-40 md:hidden glass rounded-[2rem] p-6 shadow-2xl border border-white/50 flex flex-col gap-1.5"
           >
             {/* Nav Links */}
-            <button onClick={() => { setCurrentPage('home'); setMobileMenuOpen(false); }} className="text-base font-bold p-3.5 text-left border-b border-slate-100 flex items-center justify-between hover:bg-slate-55 rounded-xl transition-all">
+            <button onClick={() => { navigate(PAGE_PATH.home); setMobileMenuOpen(false); }} className="text-base font-bold p-3.5 text-left border-b border-slate-100 flex items-center justify-between hover:bg-slate-55 rounded-xl transition-all">
               <span>首页</span>
               <ChevronRight className="w-4 h-4 text-slate-400" />
             </button>
-            <button onClick={() => { setCurrentPage('templates'); setMobileMenuOpen(false); }} className="text-base font-bold p-3.5 text-left border-b border-slate-100 flex items-center justify-between hover:bg-slate-55 rounded-xl transition-all">
+            <button onClick={() => { navigate(PAGE_PATH.templates); setMobileMenuOpen(false); }} className="text-base font-bold p-3.5 text-left border-b border-slate-100 flex items-center justify-between hover:bg-slate-55 rounded-xl transition-all">
               <span>模板中心</span>
               <ChevronRight className="w-4 h-4 text-slate-400" />
             </button>
-            <button onClick={() => { setCurrentPage('pricing'); setMobileMenuOpen(false); }} className="text-base font-bold p-3.5 text-left border-b border-slate-100 flex items-center justify-between hover:bg-slate-55 rounded-xl transition-all">
+            <button onClick={() => { navigate(PAGE_PATH.pricing); setMobileMenuOpen(false); }} className="text-base font-bold p-3.5 text-left border-b border-slate-100 flex items-center justify-between hover:bg-slate-55 rounded-xl transition-all">
               <span>定价方案</span>
               <ChevronRight className="w-4 h-4 text-slate-400" />
             </button>
@@ -726,7 +831,7 @@ export default function App() {
                 
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <button 
-                    onClick={() => { setCurrentPage('dashboard'); setMobileMenuOpen(false); }} 
+                    onClick={() => { navigate(PAGE_PATH.dashboard); setMobileMenuOpen(false); }}
                     className="py-2.5 bg-white border border-slate-200 text-slate-705 hover:text-slate-900 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all flex items-center justify-center gap-1"
                   >
                     <UserIcon className="w-3.5 h-3.5 text-slate-500" />
@@ -744,7 +849,7 @@ export default function App() {
             ) : (
               <div className="mt-2 grid grid-cols-1 gap-2">
                 <button
-                  onClick={() => { pendingLoginRedirect.current = 'dashboard'; setIsAuthModalOpen(true); setMobileMenuOpen(false); }}
+                  onClick={() => { requestLogin(PAGE_PATH.dashboard); setMobileMenuOpen(false); }}
                   className="w-full py-3.5 border border-slate-200 hover:bg-slate-50 text-slate-800 rounded-2xl font-bold text-sm transition-all"
                 >
                   注册 / 登录账户
@@ -753,7 +858,7 @@ export default function App() {
             )}
             
             <button 
-              onClick={() => { setCurrentPage('templates'); setMobileMenuOpen(false); }} 
+              onClick={() => { navigate(PAGE_PATH.templates); setMobileMenuOpen(false); }} 
               className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-bold text-sm mt-3 flex items-center justify-center gap-1 shadow-lg shadow-slate-900/10"
             >
               <span>立即在线制作</span>
@@ -767,13 +872,86 @@ export default function App() {
       <main className="pt-24 min-h-[calc(100vh-100px)]">
         <AnimatePresence mode="wait">
           <motion.div
-            key={currentPage}
+            key={location.pathname}
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -10 }}
             transition={{ duration: 0.3 }}
           >
-            {renderPage()}
+            {/* 显式传 location：AnimatePresence 退出动画期间，Routes 仍按"旧"location 渲染旧页 */}
+            <Routes location={location}>
+              <Route path="/" element={
+                <LandingPage
+                  data={data}
+                  onStart={() => {
+                    setSelectedLandingTemplate(undefined);
+                    navigate(PAGE_PATH.templates);
+                  }}
+                  onSelectTemplate={(id) => {
+                    setSelectedLandingTemplate(id);
+                    navigate(PAGE_PATH.templates);
+                  }}
+                />
+              } />
+              <Route path="/templates" element={
+                <TemplatesPage
+                  userTier={appUser?.tier || 'guest'}
+                  initialPreviewTemplateId={selectedLandingTemplate}
+                  data={data}
+                  onTriggerUpgrade={(reason) => triggerUpgrade(reason || 'templates')}
+                  onSelect={handleTemplateSelect}
+                />
+              } />
+              <Route path="/pricing" element={
+                <PricingPage
+                  currentTier={appUser?.tier || 'guest'}
+                  onSelectPlan={handleSelectPlan}
+                />
+              } />
+              <Route path="/payment" element={
+                <AuthGate currentPath="/payment" onRequestLogin={requestLogin} authLoading={authLoading} user={user}>
+                  <PaymentPage
+                    planId={selectedPlanId}
+                    onBack={() => navigate(PAGE_PATH.pricing)}
+                    onSuccess={() => {
+                      // 支付成功：持久化会员权益并刷新订单（服务端已写库，这里重拉权威数据）
+                      void handlePurchaseSuccess(selectedPlanId);
+                      navigate(PAGE_PATH.dashboard);
+                    }}
+                  />
+                </AuthGate>
+              } />
+              <Route path="/builder" element={
+                <AuthGate currentPath="/builder" onRequestLogin={requestLogin} authLoading={authLoading} user={user}>
+                  {renderBuilder()}
+                </AuthGate>
+              } />
+              <Route path="/dashboard" element={
+                <AuthGate currentPath="/dashboard" onRequestLogin={requestLogin} authLoading={authLoading} user={user}>
+                  <DashboardPage
+                    user={user}
+                    appUser={appUser}
+                    resumes={resumes}
+                    orders={orders}
+                    onNewResume={() => navigate(PAGE_PATH.templates)}
+                    onEditResume={handleEditResume}
+                    onDeleteResume={handleDeleteResume}
+                    onRenameResume={handleRenameResume}
+                    onGoToPayment={(planId) => {
+                      if (!user) {
+                        requestLogin();
+                        return;
+                      }
+                      setSelectedPlanId(planId);
+                      navigate(PAGE_PATH.payment);
+                    }}
+                    onGoToTemplates={() => navigate(PAGE_PATH.templates)}
+                    onTriggerUpgrade={(reason) => triggerUpgrade(reason || 'limit')}
+                  />
+                </AuthGate>
+              } />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
           </motion.div>
         </AnimatePresence>
       </main>
@@ -788,25 +966,14 @@ export default function App() {
       <ExportModal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
-        onPurchaseSuccess={handlePurchaseSuccess}
+        onPurchaseSuccess={(planType) => { void handlePurchaseSuccess(planType); }}
         onOpenAgreement={openAgreement}
       />
 
       <UpgradeModal
         isOpen={isUpgradeModalOpen}
         onClose={() => setIsUpgradeModalOpen(false)}
-        onSuccess={(selectedType?: string) => {
-          if (appUser) {
-            setAppUser({
-              ...appUser,
-              tier: 'member',
-              memberUntil: calculateMemberUntil(selectedType || 'month'),
-              remainingPdfExports: 999,
-              remainingPngExports: 999,
-              remainingAtsChecks: 999,
-            });
-          }
-        }}
+        onSuccess={(selectedType?: string) => { void handlePurchaseSuccess(selectedType || 'month'); }}
         reason={upgradeReason}
         onOpenAgreement={openAgreement}
       />
@@ -841,15 +1008,15 @@ export default function App() {
           <div className="space-y-4">
             <h4 className="font-bold uppercase text-xs tracking-widest text-slate-400">产品</h4>
             <ul className="space-y-2 text-slate-600 font-medium">
-              <li><button onClick={() => setCurrentPage('templates')} className="hover:text-blue-600 transition-colors">模板大厅</button></li>
+              <li><button onClick={() => navigate(PAGE_PATH.templates)} className="hover:text-blue-600 transition-colors">模板大厅</button></li>
               <li><button onClick={() => {
                 if (!user) {
-                  setIsAuthModalOpen(true);
+                  requestLogin(PAGE_PATH.builder);
                   return;
                 }
-                setCurrentPage('builder');
+                navigate(PAGE_PATH.builder);
               }} className="hover:text-blue-600 transition-colors">在线制作</button></li>
-              <li><button onClick={() => setCurrentPage('pricing')} className="hover:text-blue-600 transition-colors">价格方案</button></li>
+              <li><button onClick={() => navigate(PAGE_PATH.pricing)} className="hover:text-blue-600 transition-colors">价格方案</button></li>
             </ul>
           </div>
 

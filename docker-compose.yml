@@ -1,0 +1,36 @@
+# ============================================================================
+# 壹页简历 — Docker Compose（生产部署）
+#
+# 用法（在项目根目录）：
+#   1. 复制 .env.example 为 .env 并填入真实值（见 docs/国内轻量服务器部署.md）
+#   2. docker compose up -d --build
+#
+# 说明：
+#   - 端口只绑定 127.0.0.1，由宿主机 nginx 按子域名反代到 3000，对外不直接暴露
+#   - 前端 VITE_* 为构建期变量，自动取自 .env 注入 build args
+#   - 运行时全部环境变量来自 .env（env_file），服务端 secret 不会进入前端产物
+#   - 微信支付证书可选挂载（仅 PAYMENT_PROVIDER=wechat 时需要）
+# ============================================================================
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+    image: yiyejianli:latest
+    container_name: yiyejianli
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file: .env
+    # 微信支付商户证书（apiclient_key.pem、wechatpay_pub.pem 放 ./certs/）
+    volumes:
+      - ./certs:/app/certs:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
