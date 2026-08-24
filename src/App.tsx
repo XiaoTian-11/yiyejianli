@@ -17,6 +17,7 @@ import type { User } from '@supabase/supabase-js';
 import { saveResume, getResume, getResumesList, saveResumeWithId, deleteResume, renameResume, createNewResume, ResumeDocument } from './lib/supabaseService';
 import { getUser, checkAndDowngrade, updateUser } from './lib/supabaseUserService';
 import { getMyOrders, ClientOrder } from './lib/orderService';
+import { getOauthUrl, getCachedOpenid, saveOpenidCache } from './lib/paymentApi';
 import { DashboardPage } from './components/DashboardPage';
 import { PaymentPage } from './components/PaymentPage';
 import { LandingPage } from './pages/LandingPage';
@@ -227,6 +228,47 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // 微信内"进站预授权"：首次进入时提前静默授权拿 openid 并缓存，
+  // 之后点"立即支付"直接用缓存 openid 调起，无需在付款关键步骤再跳授权。
+  // 只在微信内置浏览器 + 已登录（拿到 uid 才有缓存意义）+ 未缓存 openid 时触发一次；
+  // 预授权回跳（state=pre:）带 openid，这里只存缓存不触发支付。
+  const preauthStartedRef = useRef(false);
+  useEffect(() => {
+    if (preauthStartedRef.current) return;
+    const ua = navigator.userAgent;
+    if (!/MicroMessenger/i.test(ua)) return;
+    if (authLoading) return;
+    if (!user) return;
+    const params = new URLSearchParams(window.location.search);
+    const uid = user.uid || user.id;
+    const openidInUrl = params.get('openid');
+    const isPreauthReturn = params.get('openid') && params.get('p') !== null;
+    if (openidInUrl) {
+      // 预授权回跳：存缓存；若恰好是支付页且有 plan 参数，则交给支付组件处理
+      saveOpenidCache(openidInUrl, uid);
+    }
+    if (isPreauthReturn) {
+      // 预授权回跳完成：清理 URL 上的 openid/p 残留
+      const url = new URL(window.location.href);
+      url.searchParams.delete('openid');
+      url.searchParams.delete('p');
+      window.history.replaceState({}, '', url.toString());
+    }
+    if (getCachedOpenid(uid)) return; // 已有缓存（含本次回跳刚存的），无需再预授权
+    preauthStartedRef.current = true;
+    const current = location.pathname + location.search;
+    const back = current.startsWith('/') ? current : '/';
+    getOauthUrl(undefined, back)
+      .then((oauthUrl) => {
+        window.location.href = oauthUrl;
+      })
+      .catch((err) => {
+        console.warn('预授权获取地址失败，跳过（支付时可再授权）:', err);
+        preauthStartedRef.current = false;
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user, location.pathname, location.search]);
 
   // 依据订单与会员状态推导当前生效套餐：
   // 会员有效（tier=member）时取最近一笔已完成的订阅订单作为“当前持有”套餐，

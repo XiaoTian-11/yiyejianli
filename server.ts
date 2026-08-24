@@ -164,35 +164,63 @@ Rules: (1) Return same-keys JSON only. (2) Use professional CV language, preserv
     }
   });
 
-  // GET /api/payment/wechat/oauth-url?planType=month — 公众号网页授权跳转地址（微信内 JSAPI 支付前取 openid）
-  // planType 经 state 参数随授权往返携带，回跳后前端据此自动继续支付（微信 WebView 会清空 sessionStorage，
-  // 不能依赖 sessionStorage 传递支付意图）
+  // GET /api/payment/wechat/oauth-url?planType=month 或 ?back=/payment?plan=month
+  //   planType：支付意图授权（state=pay:<planType>，回跳 /payment?openid&plan，前端自动继续支付）
+  //   back：    通用预授权（state=pre:<base64url(back)>，回跳 back?openid&p=<plan>，仅存 openid 不触发支付）
+  // 微信 WebView 会清空 sessionStorage，支付意图/回跳目标都经 state 随授权往返，不能依赖 sessionStorage
   app.get("/api/payment/wechat/oauth-url", (req: express.Request, res: express.Response) => {
     const appid = process.env.WECHAT_APPID || "";
     if (!appid) {
       return res.status(500).json({ error: { code: "CONFIG", message: "未配置 WECHAT_APPID" } });
     }
     const planType = String(req.query.planType || "").replace(/[^a-zA-Z0-9_]/g, "");
-    const state = planType ? `pay:${planType}` : "pay";
+    const back = String(req.query.back || "");
+    let state = "pay";
+    if (planType) {
+      state = `pay:${planType}`;
+    } else if (back) {
+      // back 必须是站内路径（防开放重定向），编码进 state
+      if (!back.startsWith("/")) {
+        return res.status(400).json({ error: { code: "BAD_BACK", message: "back 必须是站内路径" } });
+      }
+      state = `pre:${Buffer.from(back).toString("base64url")}`;
+    }
     const redirectUri = encodeURIComponent(`${(process.env.APP_URL || "").replace(/\/$/, "")}/api/payment/wechat/oauth/callback`);
     const url = `https://open.weixin.qq.com/connect/oauth2/authorize?appid=${appid}&redirect_uri=${redirectUri}&response_type=code&scope=snsapi_base&state=${encodeURIComponent(state)}#wechat_redirect`;
     res.json({ url });
   });
 
-  // GET /api/payment/wechat/oauth/callback — 微信授权回调：code 换 openid，302 回前端 /payment
-  // 回跳带 openid 与 plan（从 state 还原，供前端自动继续 JSAPI 支付）
+  // GET /api/payment/wechat/oauth/callback — 微信授权回调：code 换 openid，302 回前端
+  //   state=pay:<planType>   → /payment?openid&plan（支付意图，前端自动继续 JSAPI）
+  //   state=pre:<back>       → back 原路径?openid&p=<plan>（预授权，仅带回 openid，不触发自动支付）
   app.get("/api/payment/wechat/oauth/callback", async (req: express.Request, res: express.Response) => {
     try {
       const code = String(req.query.code || "");
       if (!code) {
         return res.redirect(`${(process.env.APP_URL || "").replace(/\/$/, "")}/payment?oauth_error=1`);
       }
-      // 解析 state 还原 planType（格式 pay:<planType>）
       const state = String(req.query.state || "pay");
-      const planType = state.startsWith("pay:") ? state.slice(4) : "";
       const { getOpenidByCode } = await import("./server/paymentWechat");
       const { openid } = await getOpenidByCode(code);
-      const frontUrl = `${(process.env.APP_URL || "").replace(/\/$/, "")}/payment?openid=${encodeURIComponent(openid)}${planType ? `&plan=${encodeURIComponent(planType)}` : ""}`;
+      const appUrl = (process.env.APP_URL || "").replace(/\/$/, "");
+
+      if (state.startsWith("pre:")) {
+        // 预授权：回跳原路径，plan 改名 p（避免被当作支付意图触发自动支付）
+        let back = "/";
+        try {
+          back = Buffer.from(state.slice(4), "base64url").toString("utf8");
+        } catch { /* 解码失败回首页 */ }
+        const url = new URL(back, appUrl);
+        const plan = url.searchParams.get("plan");
+        url.searchParams.delete("plan");
+        url.searchParams.set("openid", openid);
+        if (plan) url.searchParams.set("p", plan);
+        return res.redirect(url.toString());
+      }
+
+      // 支付意图：回 /payment?openid&plan=<planType>
+      const planType = state.startsWith("pay:") ? state.slice(4) : "";
+      const frontUrl = `${appUrl}/payment?openid=${encodeURIComponent(openid)}${planType ? `&plan=${encodeURIComponent(planType)}` : ""}`;
       res.redirect(frontUrl);
     } catch (err: any) {
       console.error("[oauth] 换取openid失败:", err?.message || err);

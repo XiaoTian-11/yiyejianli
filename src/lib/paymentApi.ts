@@ -68,15 +68,49 @@ export async function queryOrder(orderId: string): Promise<OrderStatusResult> {
 }
 
 /** 获取公众号网页授权跳转地址（微信内 JSAPI 支付前取 openid）
- *  planType 编码进 state 参数随授权往返，回跳后前端据此自动继续支付（微信 WebView 会清空 sessionStorage） */
-export async function getOauthUrl(planType?: string): Promise<string> {
-  const qs = planType ? `?planType=${encodeURIComponent(planType)}` : '';
+ *  planType：支付意图授权，编码进 state 随授权往返，回跳后自动继续支付
+ *  back：通用预授权，回跳原路径仅带回 openid（不触发自动支付），用于进站提前拿 openid
+ *  （微信 WebView 会清空 sessionStorage，意图都经 state 携带，不能依赖 sessionStorage） */
+export async function getOauthUrl(planType?: string, back?: string): Promise<string> {
+  const params = new URLSearchParams();
+  if (planType) params.set('planType', planType);
+  if (back) params.set('back', back);
+  const qs = params.toString() ? `?${params.toString()}` : '';
   const res = await fetch(`/api/payment/wechat/oauth-url${qs}`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.url) {
     throw new Error(data?.error?.message || '获取微信授权地址失败');
   }
   return data.url as string;
+}
+
+// ─── openid 缓存（同一微信用户 + 站内账号复用，避免重复授权跳转）─────────────
+export const WECHAT_OPENID_CACHE_KEY = 'yjl_wechat_openid_cache';
+
+/** 读取缓存的 openid；uid 不同（换账号）视为无效返回 null */
+export function getCachedOpenid(uid?: string): string | null {
+  try {
+    const raw = localStorage.getItem(WECHAT_OPENID_CACHE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data?.openid) return null;
+    if (uid && data.uid && data.uid !== uid) return null;
+    return data.openid as string;
+  } catch {
+    return null;
+  }
+}
+
+/** 缓存 openid（授权回跳拿到后存，供下次直接调起/进站预授权后使用） */
+export function saveOpenidCache(openid: string, uid?: string) {
+  try {
+    localStorage.setItem(
+      WECHAT_OPENID_CACHE_KEY,
+      JSON.stringify({ openid, uid: uid || null, savedAt: Date.now() })
+    );
+  } catch {
+    /* localStorage 不可用时忽略，不影响支付 */
+  }
 }
 
 /** 模拟支付确认（仅 mock 模式可用；真实模式下服务端会拒绝） */
