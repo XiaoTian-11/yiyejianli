@@ -149,6 +149,9 @@ export default function App() {
         // 规范化 Supabase User：添加 uid 别名兼容旧代码
         const normalizedUser: any = { ...currentUser, uid: currentUser.id };
         setUser(normalizedUser);
+        // 会话已恢复即放行守卫（authLoading 只代表"会话是否就绪"，不等待数据加载，
+        // 否则 checkAndDowngrade 提前 return 时 authLoading 会卡在 true 导致受保护页面白屏）
+        setAuthLoading(false);
         // Load list and set active
         const list = await refreshResumesList(normalizedUser.uid);
         refreshOrders(normalizedUser.uid);
