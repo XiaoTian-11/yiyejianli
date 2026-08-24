@@ -125,32 +125,36 @@ export const PayWithQR: React.FC<PayWithQRProps> = ({ planType, userId, onSucces
   // 微信内 + OAuth 回调带回 openid + 有支付意图 → 自动继续 JSAPI 支付
   // 支付意图优先从 URL ?plan= 读取（服务端经 state 回传；微信 WebView 会清空 sessionStorage），
   // sessionStorage 作为兜底（同一页面内未跳转授权页的直达场景）
+  // 依赖 planType：OAuth 回跳是整页刷新，App 先按 ?plan= 同步套餐状态，planType prop 更新后本 effect 重跑触发
+  const autoPayHandledRef = useRef<string | null>(null);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const openid = params.get('openid');
     const planParam = params.get('plan');
     const intent = planParam || sessionStorage.getItem(WECHAT_OAUTH_KEY);
-    if (openid && intent && intent === planType) {
-      sessionStorage.removeItem(WECHAT_OAUTH_KEY);
-      setPaying(true);
-      createOrder({ userId, planType, paymentMethod: 'wechat', channel: 'jsapi', openid })
-        .then(async (result) => {
-          setOrder(result);
-          if (result.jsapiParams) {
-            const r = await invokeWechatPay(result.jsapiParams);
-            if (r === 'cancel') {
-              setError('您已取消支付，可再次点击支付');
-            }
+    if (!openid || !intent || intent !== planType) return;
+    // 同一 openid 只自动支付一次（StrictMode 双执行 / planType 更新重跑都不重复建单）
+    if (autoPayHandledRef.current === openid) return;
+    autoPayHandledRef.current = openid;
+    sessionStorage.removeItem(WECHAT_OAUTH_KEY);
+    setPaying(true);
+    createOrder({ userId, planType, paymentMethod: 'wechat', channel: 'jsapi', openid })
+      .then(async (result) => {
+        setOrder(result);
+        if (result.jsapiParams) {
+          const r = await invokeWechatPay(result.jsapiParams);
+          if (r === 'cancel') {
+            setError('您已取消支付，可再次点击支付');
           }
-        })
-        .catch((e: Error) => setError(e.message))
-        .finally(() => {
-          setPaying(false);
-          cleanUrl();
-        });
-    }
+        }
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => {
+        setPaying(false);
+        cleanUrl();
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [planType]);
 
   // 模拟支付确认（仅 mock provider）
   const handleMockPay = async () => {

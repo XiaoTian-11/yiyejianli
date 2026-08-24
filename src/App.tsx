@@ -26,7 +26,7 @@ import { INITIAL_DATA } from './constants';
 import { INDUSTRY_SAMPLES, TEMPLATE_INDUSTRY_MAP } from './constants/industrySamples';
 import { ResumeData, TemplateId, Page, User as AppUser, PlanType } from './types';
 import { cn } from './lib/utils';
-import { calculateRenewedMemberUntil, deriveCurrentPlan } from './lib/pricing';
+import { getPlanByType, calculateRenewedMemberUntil, deriveCurrentPlan } from './lib/pricing';
 import { PAGE_PATH, isProtectedPath } from './lib/routes';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -528,6 +528,17 @@ export default function App() {
     setSelectedPlanId(id);
     navigate(PAGE_PATH.payment);
   };
+
+  // OAuth 授权回跳是整页刷新（微信内从 open.weixin.qq.com 回来），selectedPlanId 状态会丢失、
+  // 重置为默认 'month'。URL 上的 ?plan= 才是权威来源（服务端从 state 还原），此处同步回状态，
+  // 保证 /payment 上的套餐与自动支付、激活会员用的套餐一致。
+  useEffect(() => {
+    if (location.pathname !== PAGE_PATH.payment) return;
+    const planParam = new URLSearchParams(location.search).get('plan');
+    if (planParam && getPlanByType(planParam as any)) {
+      setSelectedPlanId(planParam);
+    }
+  }, [location.pathname, location.search]);
 
   // 路由切换时回到页面顶部（模拟传统多页跳转体验）
   useEffect(() => {
