@@ -1,0 +1,246 @@
+# ============================================================================
+# 壹页简历 — 2核2G 专用 Supabase 精简部署
+#
+# 适用：腾讯云/阿里云轻量 2核2G（3M 带宽），只跑壹页简历
+# 用途：替换 Supabase 官方 docker/docker-compose.yml（放在 /opt/supabase/docker/ 下）
+#       `mv docker-compose.yml docker-compose.orig.yml && cp 本文件 docker-compose.yml`
+#
+# 相比官方版裁掉了 8 个服务（studio/imgproxy/meta/realtime/storage/functions/
+# supavisor/deno-cache），只保留壹页简历必需的 4 个：db + api-gw + auth + rest。
+# 同时做了 2G 内存专项优化（见各服务注释）。
+#
+# 前提：同目录 .env 已配置（§5.2 生成的密钥），官方 volumes/db/ 迁移文件仍在。
+# ============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # API 网关（Envoy）→ 对外只暴露 8000，路由 /rest/v1、/auth/v1
+  # 2G 优化：去掉对 studio 的依赖（官方 api-gw depends_on studio，精简后 studio 已删）
+  # ---------------------------------------------------------------------------
+  api-gw:
+    container_name: supabase-envoy
+    image: envoyproxy/envoy:v1.39.0
+    restart: unless-stopped
+    networks:
+      default:
+        # Expose `envoy` and `kong` as network aliases, so internal configs
+        # that reference either hostname resolve to whichever gateway is active.
+        aliases:
+          - envoy
+          - kong
+    healthcheck:
+      # Using a TCP port check because this image does not include curl or wget.
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/127.0.0.1/8000'"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      # 官方依赖 studio（管理面板）；精简后 studio 已删，改为直接依赖 db 健康
+      db:
+        condition: service_healthy
+    ports:
+      - ${API_GW_HTTP_PORT:-${KONG_HTTP_PORT:-8000}}:8000/tcp
+    volumes:
+      - ./volumes/api/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ./volumes/api/envoy/cds.yaml:/etc/envoy/cds.yaml:ro
+      - ./volumes/api/envoy/lds.template.yaml:/etc/envoy/lds.template.yaml:ro
+      - ./volumes/api/envoy/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+    environment:
+      ANON_KEY: ${ANON_KEY}
+      SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:-}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:-}
+      ANON_KEY_ASYMMETRIC: ${ANON_KEY_ASYMMETRIC:-}
+      SERVICE_ROLE_KEY_ASYMMETRIC: ${SERVICE_ROLE_KEY_ASYMMETRIC:-}
+      DASHBOARD_USERNAME: ${DASHBOARD_USERNAME}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
+    entrypoint: ["/bin/sh", "/docker-entrypoint.sh"]
+    # 2G 优化：网关最多 256MB
+    mem_limit: 256m
+
+  # ---------------------------------------------------------------------------
+  # Auth（GoTrue）：注册/登录/Token，Go 单二进制，本身很省
+  # ---------------------------------------------------------------------------
+  auth:
+    container_name: supabase-auth
+    image: supabase/gotrue:v2.189.0
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:9999/health"
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    depends_on:
+      db:
+        # Disable this if you are using an external Postgres database
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${API_EXTERNAL_URL}
+
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+
+      GOTRUE_SITE_URL: ${SITE_URL}
+      GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS}
+      GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP}
+
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: ${JWT_EXPIRY}
+
+      # Legacy symmetric HS256 key
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+
+      # JSON array of signing JWKs (EC private + legacy symmetric)
+      # For Podman, use: GOTRUE_JWT_KEYS: ${JWT_KEYS}
+      #GOTRUE_JWT_KEYS: ${JWT_KEYS:-[]}
+
+      GOTRUE_JWT_ISSUER: ${API_EXTERNAL_URL}
+
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: ${ENABLE_EMAIL_SIGNUP}
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: ${ENABLE_ANONYMOUS_USERS}
+      GOTRUE_MAILER_AUTOCONFIRM: ${ENABLE_EMAIL_AUTOCONFIRM}
+
+      # Uncomment to bypass nonce check in ID Token flow. Commonly set to true when using Google Sign In on mobile.
+      # GOTRUE_EXTERNAL_SKIP_NONCE_CHECK: "true"
+
+      # GOTRUE_MAILER_SECURE_EMAIL_CHANGE_ENABLED: "true"
+      # GOTRUE_SMTP_MAX_FREQUENCY: 1s
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL}
+      GOTRUE_SMTP_HOST: ${SMTP_HOST}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT}
+      GOTRUE_SMTP_USER: ${SMTP_USER}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS}
+      GOTRUE_SMTP_SENDER_NAME: ${SMTP_SENDER_NAME}
+      GOTRUE_MAILER_URLPATHS_INVITE: ${MAILER_URLPATHS_INVITE}
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: ${MAILER_URLPATHS_CONFIRMATION}
+      GOTRUE_MAILER_URLPATHS_RECOVERY: ${MAILER_URLPATHS_RECOVERY}
+      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: ${MAILER_URLPATHS_EMAIL_CHANGE}
+
+      GOTRUE_EXTERNAL_PHONE_ENABLED: ${ENABLE_PHONE_SIGNUP}
+      GOTRUE_SMS_AUTOCONFIRM: ${ENABLE_PHONE_AUTOCONFIRM}
+
+    # 2G 优化：Auth 最多 192MB
+    mem_limit: 192m
+
+  # ---------------------------------------------------------------------------
+  # REST（PostgREST）：/rest/v1，壹页简历的订单/会员数据读写入口
+  # ---------------------------------------------------------------------------
+  rest:
+    container_name: supabase-rest
+    image: postgrest/postgrest:v14.12
+    restart: unless-stopped
+    depends_on:
+      db:
+        # Disable this if you are using an external Postgres database
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "postgrest", "--ready" ]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+      PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMAS}
+      PGRST_DB_MAX_ROWS: ${PGRST_DB_MAX_ROWS:-1000}
+      PGRST_DB_EXTRA_SEARCH_PATH: ${PGRST_DB_EXTRA_SEARCH_PATH:-public}
+      PGRST_DB_ANON_ROLE: anon
+
+      PGRST_ADMIN_SERVER_PORT: 3001
+      PGRST_ADMIN_SERVER_HOST: localhost
+
+      # PostgREST accepts a plain-text symmetric secret, a single JWK, or a JWKS.
+      # For Podman, use either PGRST_JWT_SECRET: ${JWT_SECRET} or
+      # PGRST_JWT_SECRET: ${JWT_JWKS}
+      PGRST_JWT_SECRET: ${JWT_JWKS:-${JWT_SECRET}}
+
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET}
+      PGRST_APP_SETTINGS_JWT_EXP: ${JWT_EXPIRY}
+    command:
+      [
+        "postgrest"
+      ]
+    # 2G 优化：PostgREST 最多 128MB
+    mem_limit: 128m
+
+  # ---------------------------------------------------------------------------
+  # Postgres（数据库）：内存大头，2G 优化核心
+  #  - shared_buffers=256MB（默认 128MB 已够，256MB 是 2G 机器的甜点位）
+  #  - work_mem=2MB（排序/哈希内存，避免高并发吃爆）
+  #  - maintenance_work_mem=64MB（VACUUM/索引）
+  #  - max_connections=50（并发不够用连接数来凑，绝不增加内存）
+  # ---------------------------------------------------------------------------
+  db:
+    container_name: supabase-db
+    image: supabase/postgres:17.6.1.136
+    restart: unless-stopped
+    volumes:
+      - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
+      - ./volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
+      - ./volumes/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:Z
+      - ./volumes/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:Z
+      - ./volumes/db/data:/var/lib/postgresql/data:Z
+      - ./volumes/db/_supabase.sql:/docker-entrypoint-initdb.d/migrations/97-_supabase.sql:Z
+      - ./volumes/db/logs.sql:/docker-entrypoint-initdb.d/migrations/99-logs.sql:Z
+      - ./volumes/db/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:Z
+      - db-config:/etc/postgresql-custom
+    healthcheck:
+      test:
+        [
+        "CMD",
+        "pg_isready",
+        "-U",
+        "postgres",
+        "-h",
+        "localhost"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: ${POSTGRES_PORT}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXP: ${JWT_EXPIRY}
+    command:
+      [
+        "postgres",
+        "-c",
+        "config_file=/etc/postgresql/postgresql.conf",
+        "-c",
+        "log_min_messages=fatal",
+        # ── 2G 内存优化 ──
+        "-c",
+        "shared_buffers=256MB",
+        "-c",
+        "work_mem=2MB",
+        "-c",
+        "maintenance_work_mem=64MB",
+        "-c",
+        "max_connections=50",
+        "-c",
+        "effective_cache_size=768MB"
+      ]
+    # 2G 优化：Postgres 最多 1GB（256MB shared_buffers + 进程开销）
+    mem_limit: 1g
+
+# 保留官方命名卷（db 服务的 pgsodium 密钥持久化）
+volumes:
+  db-config:

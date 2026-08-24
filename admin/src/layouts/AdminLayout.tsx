@@ -5,10 +5,10 @@ import {
   ShoppingCart,
   FileText,
   LogOut,
-  Award,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import logo from '@/assets/logo.svg';
 
 const NAV_ITEMS = [
   { to: '/', label: '工作台', icon: LayoutDashboard, end: true },
@@ -31,8 +31,8 @@ export function AdminLayout() {
       {/* 侧边栏 */}
       <aside className="flex w-60 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
         <div className="flex h-14 items-center gap-2 border-b px-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Award className="h-4 w-4" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900">
+            <img src={logo} alt="壹页简历" className="h-7 w-7 rounded-md" />
           </div>
           <div className="leading-tight">
             <p className="text-sm font-semibold">壹页简历</p>

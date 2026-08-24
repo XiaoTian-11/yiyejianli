@@ -49,14 +49,14 @@ function buildAuthorization(method: string, urlPath: string, bodyStr: string, cf
   const nonce = crypto.randomBytes(16).toString('hex');
   const message = `${method}\n${urlPath}\n${timestamp}\n${nonce}\n${bodyStr}\n`;
   const signature = crypto.createSign('RSA-SHA256').update(message).sign(cfg.privateKey, 'base64');
-  return [
-    'WECHATPAY2-SHA256-RSA2048',
+  // 官方格式：scheme + 空格 + 逗号分隔参数（WECHATPAY2-SHA256-RSA2048 mchid="...",nonce_str="...",...）
+  return `WECHATPAY2-SHA256-RSA2048 ${[
     `mchid="${cfg.mchid}"`,
     `nonce_str="${nonce}"`,
     `signature="${signature}"`,
     `timestamp="${timestamp}"`,
     `serial_no="${cfg.serialNo}"`,
-  ].join(',');
+  ].join(',')}`;
 }
 
 async function requestWechat(method: string, urlPath: string, body: unknown): Promise<any> {

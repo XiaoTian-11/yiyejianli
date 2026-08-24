@@ -17,6 +17,8 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // 内网穿透（cpolar）域名白名单：允许通过隧道域名访问 dev server
+      allowedHosts: ['165d3b25.r17.cpolar.top', '.cpolar.top'],
     },
   };
 });

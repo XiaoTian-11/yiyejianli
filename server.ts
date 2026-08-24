@@ -1,10 +1,12 @@
 import express from "express";
+import compression from "compression";
 import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import OpenAI from "openai";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 import { getAdminClient } from "./server/supabaseAdmin";
 import { createOrder, completeOrder, queryOrder, PaymentError } from "./server/paymentService";
 import { getPaymentProvider } from "./server/paymentProvider";
@@ -20,7 +22,8 @@ const ai = new OpenAI({
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  // 支持环境变量指定端口（默认 3000）。生产与拼团共存时用 PORT=3001 避开冲突
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Middleware to parse JSON
   // verify 回调保留原始 body 字符串，供微信支付回调验签使用
@@ -28,6 +31,9 @@ async function startServer() {
     limit: '10mb',
     verify: (req: any, _res, buf) => { req.rawBody = buf.toString('utf8'); },
   }));
+
+  // gzip 压缩静态资源（JS/CSS/JSON），打包产物可压缩到 1/3 大小，加快加载
+  app.use(compression());
 
   // API Route for secure DeepSeek AI Translation
   app.post("/api/translate", async (req, res) => {
@@ -121,7 +127,9 @@ Rules: (1) Return same-keys JSON only. (2) Use professional CV language, preserv
       const token = authz.slice(7);
       const anon = createSupabaseClient(
         process.env.VITE_SUPABASE_URL || "",
-        process.env.VITE_SUPABASE_ANON_KEY || ""
+        process.env.VITE_SUPABASE_ANON_KEY || "",
+        // Node <22 无原生 WebSocket（服务器 Node 20），注入 ws 避免 RealtimeClient 抛错
+        { realtime: { transport: WebSocket as any } }
       );
       const { data, error } = await anon.auth.getUser(token);
       if (error || !data.user) throw new PaymentError("UNAUTHORIZED", "登录已过期，请重新登录");
