@@ -98,6 +98,8 @@ export default function App() {
   // 当前生效的会员套餐（从最近一笔已完成的订阅订单推导），用于定价页精确标记“当前持有”
   const [currentPlan, setCurrentPlan] = useState<PlanType | undefined>(undefined);
   const pendingLoginRedirect = useRef<string | null>(null);
+  // 未登录用户在模板中心选中模板时先记住模板 id，登录成功后自动应用该模板进入编辑器
+  const pendingTemplateId = useRef<TemplateId | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [selectedPlanId, setSelectedPlanId] = useState<string>('month');
@@ -206,6 +208,12 @@ export default function App() {
         if (pendingLoginRedirect.current) {
           navigate(pendingLoginRedirect.current);
           pendingLoginRedirect.current = null;
+        }
+        // 未登录时在模板中心选中了模板：登录成功后自动应用该模板进入编辑器
+        if (pendingTemplateId.current) {
+          const tid = pendingTemplateId.current;
+          pendingTemplateId.current = null;
+          void applyTemplateAndEnter(tid, normalizedUser.uid);
         }
         setAuthLoading(false);
       } else {
@@ -438,62 +446,77 @@ export default function App() {
 
   // 未登录访问受保护页面时：记录要跳回的目标路径并弹出登录框，登录成功后由
   // onAuthStateChanged 统一跳转（单一出口，避免登录成功瞬间 onClose 与 user 竞态）
-  const requestLogin = (redirectTo?: string) => {
+  const requestLogin = (redirectTo?: string, opts?: { keepPendingTemplate?: boolean }) => {
     if (redirectTo && isProtectedPath(redirectTo)) {
       pendingLoginRedirect.current = redirectTo;
+    }
+    // 非“模板中心选模板”发起的登录会覆盖之前遗留的“登录后应用模板”意图，
+    // 避免用户登录后误入编辑器并意外新建简历；模板选择流程需显式保留
+    if (!opts?.keepPendingTemplate) {
+      pendingTemplateId.current = null;
     }
     setIsAuthModalOpen(true);
   };
 
   // 模板页选中模板 → 创建简历并进入编辑器
   const handleTemplateSelect = async (id: TemplateId) => {
-    // 未登录时只弹登录框，登录后跳回编辑器
+    // 未登录时：记住所选模板并弹登录框；登录成功后由 onAuthStateChanged 统一
+    // 执行“应用该模板 → 创建简历 → 进入编辑器”，避免“点了没反应”
     if (!user) {
-      requestLogin(PAGE_PATH.builder);
+      pendingTemplateId.current = id;
+      requestLogin(PAGE_PATH.builder, { keepPendingTemplate: true });
       return;
     }
     try {
-      setTemplateId(id);
-
-      const templateNames: Record<string, string> = {
-        modern: '现代简约简历',
-        classic: '经典学术简历',
-        minimal: '极简创意简历',
-        executive: '大厂高通过率简历',
-        student: '应届生校招简历',
-        tech_focused: '开源极客简历',
-        finance_elite: '金融精英简历',
-        medical_academic: '医疗科研简历',
-        creative_designer: '创意视觉设计简历',
-        engineering_tech: '工程建设大厂简历'
-      };
-      const newName = `${templateNames[id] || '求职简历'}_${new Date().toLocaleDateString('zh-CN', {month:'numeric', day:'numeric'})}`;
-
-      const industryKey = TEMPLATE_INDUSTRY_MAP[id] || 'product';
-      const initialIndustryData = INDUSTRY_SAMPLES[industryKey]?.data || INITIAL_DATA;
-
-      let newId;
-      try {
-        newId = await createNewResume(user.uid, newName, id, initialIndustryData);
-      } catch (err) {
-        console.error("Failed to create resume in storage", err);
-        newId = 'temp_' + Math.random().toString(36).substring(2, 9) + '_' + user.uid;
-      }
-
-      setActiveResumeId(newId);
-      setData(initialIndustryData);
-      lastSavedDataRef.current = JSON.stringify(initialIndustryData);
-
-      try {
-        await refreshResumesList(user.uid);
-      } catch (err) {
-        console.error("Failed to refresh resumes list", err);
-      }
-
-      navigate(PAGE_PATH.builder);
+      await applyTemplateAndEnter(id, user.uid);
     } catch (overallErr) {
       console.error("Error during template selection:", overallErr);
     }
+  };
+
+  // 应用所选模板：创建简历并进入编辑器（登录后 / 直接点击共用）
+  const applyTemplateAndEnter = async (id: TemplateId, uid: string) => {
+    setTemplateId(id);
+
+    const templateNames: Record<string, string> = {
+      modern: '现代简约简历',
+      classic: '经典学术简历',
+      minimal: '极简创意简历',
+      executive: '大厂高通过率简历',
+      student: '应届生校招简历',
+      tech_focused: '开源极客简历',
+      finance_elite: '金融精英简历',
+      medical_academic: '医疗科研简历',
+      creative_designer: '创意视觉设计简历',
+      engineering_tech: '工程建设大厂简历'
+    };
+    const newName = `${templateNames[id] || '求职简历'}_${new Date().toLocaleDateString('zh-CN', {month:'numeric', day:'numeric'})}`;
+
+    const industryKey = TEMPLATE_INDUSTRY_MAP[id] || 'product';
+    const initialIndustryData = INDUSTRY_SAMPLES[industryKey]?.data || INITIAL_DATA;
+
+    // createNewResume 失败时兜底为本地临时 id，保证编辑/保存流程不中断
+    let newId = '';
+    try {
+      newId = await createNewResume(uid, newName, id, initialIndustryData);
+    } catch (err) {
+      console.error("Failed to create resume in storage", err);
+    }
+    if (!newId) {
+      newId = 'temp_' + Math.random().toString(36).substring(2, 9) + '_' + uid;
+    }
+
+    setActiveResumeId(newId);
+    setData(initialIndustryData);
+    lastSavedDataRef.current = JSON.stringify(initialIndustryData);
+
+    try {
+      await refreshResumesList(uid);
+    } catch (err) {
+      console.error("Failed to refresh resumes list", err);
+    }
+
+    navigate(PAGE_PATH.builder);
   };
 
   // 定价页选中方案 → 跳转支付页

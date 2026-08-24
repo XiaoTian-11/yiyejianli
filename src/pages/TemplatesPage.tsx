@@ -391,7 +391,8 @@ const TemplateCard: React.FC<any> = ({ tmpl, index, onPreview, userTier, onSelec
     initial={{ opacity: 0, scale: 0.95 }}
     animate={{ opacity: 1, scale: 1 }}
     transition={{ delay: index * 0.05 }}
-    className="group bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden hover:shadow-2xl hover:shadow-slate-200 transition-all hover:-translate-y-1"
+    onClick={onPreview}
+    className="group bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden hover:shadow-2xl hover:shadow-slate-200 transition-all hover:-translate-y-1 cursor-pointer"
   >
     <div className="p-4 overflow-hidden">
       <div className="aspect-[3/4] bg-white rounded-[1.8rem] relative overflow-hidden border border-slate-100 shadow-inner">
@@ -410,9 +411,12 @@ const TemplateCard: React.FC<any> = ({ tmpl, index, onPreview, userTier, onSelec
         </div>
 
         {/* Hover Actions */}
-        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all flex flex-col items-center justify-center gap-3 px-4 text-center">
-          <button 
-            onClick={onPreview}
+        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all flex flex-col items-center justify-center gap-3 px-4 text-center">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onPreview();
+            }}
             className="w-[85%] py-2.5 bg-white text-slate-900 rounded-xl font-bold flex items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-all text-xs"
           >
             <Eye className="w-4 h-4" /> {tmpl.isPremium && userTier !== 'member' ? '查看详情' : '预览模板'}
