@@ -3,6 +3,7 @@ import { useLocation, useNavigate, Routes, Route, Navigate } from 'react-router-
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { Download, FileText, Layout, Eye, Settings2, Github, Award, Menu, X, LogOut, User as UserIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import logo from './assets/logo.svg';
 import { ResumeEditor } from './components/ResumeEditor';
 import { ResumePreview } from './components/ResumePreview';
 import { ResumeScoring } from './components/ResumeScoring';
@@ -165,6 +166,12 @@ export default function App() {
         try {
           const { user: userData, error } = await getUser(normalizedUser.uid);
           if (userData && !error) {
+            // 账户已被管理员禁用：自动登出并提示
+            if (userData.status === 'disabled') {
+              alert('您的账户已被管理员禁用，无法继续使用平台。如有疑问请联系客服。');
+              signOut(auth);
+              return;
+            }
             // 检查会员是否过期
             const { user: checkedUser, downgraded } = await checkAndDowngrade(normalizedUser.uid);
             if (checkedUser) {
@@ -733,8 +740,8 @@ export default function App() {
               onClick={() => navigate(PAGE_PATH.home)}
               className="flex items-center gap-2 group"
             >
-              <div className="bg-slate-900 p-2 rounded-2xl group-hover:scale-110 transition-transform">
-                <Award className="w-5 h-5 text-macaron-pink" />
+              <div className="bg-slate-900 p-1.5 rounded-2xl group-hover:scale-110 transition-transform">
+                <img src={logo} alt="壹页简历" className="w-7 h-7 rounded-lg" />
               </div>
               <span className="text-2xl font-display font-extrabold tracking-tighter">
                 壹页简历
@@ -999,7 +1006,9 @@ export default function App() {
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
           <div className="md:col-span-2 space-y-6">
             <div className="flex items-center gap-2">
-              <Award className="w-5 h-5 text-blue-600" />
+              <div className="bg-slate-900 p-1.5 rounded-2xl">
+                <img src={logo} alt="壹页简历" className="w-7 h-7 rounded-lg" />
+              </div>
               <span className="text-2xl font-display font-extrabold tracking-tighter">壹页简历</span>
             </div>
             <p className="text-slate-500 max-w-sm italic">
@@ -1055,6 +1064,16 @@ export default function App() {
               服务协议
             </button>
           </div>
+        </div>
+        <div className="max-w-7xl mx-auto mt-4 pb-2 text-center text-xs font-bold text-slate-400">
+          <a
+            href="https://beian.miit.gov.cn/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-slate-900 transition-colors"
+          >
+            苏ICP备2026060474号
+          </a>
         </div>
       </footer>
     </div>

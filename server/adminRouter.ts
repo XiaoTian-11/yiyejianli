@@ -295,6 +295,26 @@ router.patch('/users/:id', requireAdmin, async (req: Request, res: Response) => 
   }
 });
 
+// ── 用户密码重置 ─────────────────────────────────────────────────────────────
+
+/**
+ * 重置用户登录密码为 123456（Supabase Auth 哈希存储，管理员无法查看明文，
+ * 仅可重置。使用 Auth Admin API 直接更新，即时生效）。
+ */
+router.post('/users/:id/reset-password', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const admin = getAdminClient();
+    const id = req.params.id;
+    const { data, error } = await admin.auth.admin.updateUserById(id, { password: '123456' });
+    if (error) {
+      return res.status(400).json({ error: { code: 'AUTH_UPDATE', message: `重置密码失败: ${error.message}` } });
+    }
+    res.json({ success: true, email: data.user?.email ?? null });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
 // ── 订单管理 ───────────────────────────────────────────────────────────────
 
 router.get('/orders', requireAdmin, async (req: Request, res: Response) => {

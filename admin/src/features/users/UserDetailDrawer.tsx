@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Pencil, FileText, ShoppingCart } from 'lucide-react';
+import { Loader2, Pencil, FileText, ShoppingCart, KeyRound, ShieldBan, ShieldCheck } from 'lucide-react';
 import { api } from '@/lib/api';
 import {
   Dialog,
@@ -20,11 +20,12 @@ import {
   PLAN_TYPE_TEXT,
   RESUME_STATUS_TEXT,
 } from '@/types';
-
 interface UserDetailDrawerProps {
   userId: string | null;
   onClose: () => void;
   onEdit: (user: AdminUserRow) => void;
+  onToggleStatus?: (user: AdminUserRow) => void;
+  onResetPassword?: (user: AdminUserRow) => void;
 }
 
 function Field({ label, value }: { label: string; value: string | number | null }) {
@@ -36,7 +37,7 @@ function Field({ label, value }: { label: string; value: string | number | null 
   );
 }
 
-export function UserDetailDrawer({ userId, onClose, onEdit }: UserDetailDrawerProps) {
+export function UserDetailDrawer({ userId, onClose, onEdit, onToggleStatus, onResetPassword }: UserDetailDrawerProps) {
   const query = useQuery({
     queryKey: ['admin', 'user', userId],
     queryFn: () => api.get<UserDetail>(`/users/${userId}`),
@@ -70,14 +71,35 @@ export function UserDetailDrawer({ userId, onClose, onEdit }: UserDetailDrawerPr
             <div className="rounded-lg border p-4">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-sm font-semibold">会员信息</h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 gap-1 text-xs"
-                  onClick={() => onEdit(user)}
-                >
-                  <Pencil className="h-3.5 w-3.5" /> 编辑
-                </Button>
+                <div className="flex flex-wrap items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 text-xs"
+                    onClick={() => onResetPassword?.(user)}
+                  >
+                    <KeyRound className="h-3.5 w-3.5" /> 重置密码
+                  </Button>
+                  <Button
+                    variant={user.status === 'disabled' ? 'outline' : 'destructive'}
+                    size="sm"
+                    className="h-7 gap-1 text-xs"
+                    onClick={() => onToggleStatus?.(user)}
+                  >
+                    {user.status === 'disabled'
+                      ? <ShieldCheck className="h-3.5 w-3.5" />
+                      : <ShieldBan className="h-3.5 w-3.5" />}
+                    {user.status === 'disabled' ? '启用' : '禁用'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 text-xs"
+                    onClick={() => onEdit(user)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> 编辑
+                  </Button>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                 <Field label="邮箱" value={user.email} />
@@ -89,6 +111,7 @@ export function UserDetailDrawer({ userId, onClose, onEdit }: UserDetailDrawerPr
                   </Badge>
                 </div>
                 <Field label="状态" value={user.status === 'disabled' ? '已禁用' : '正常'} />
+                <Field label="密码" value="已加密（不可查看）" />
                 <Field label="会员到期" value={formatDateTime(user.member_until)} />
                 <Field label="PDF 剩余" value={user.remaining_pdf_exports} />
                 <Field label="PNG 剩余" value={user.remaining_png_exports} />

@@ -10,6 +10,7 @@ function rowToUser(data: any): User {
     remainingPdfExports: data.remaining_pdf_exports ?? 0,
     remainingPngExports: data.remaining_png_exports ?? 0,
     remainingAtsChecks: data.remaining_ats_checks ?? 0,
+    status: data.status === 'disabled' ? 'disabled' : 'active',
   };
 }
 

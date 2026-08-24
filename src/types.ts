@@ -140,6 +140,8 @@ export interface User {
   remainingPdfExports: number;
   remainingPngExports: number;
   remainingAtsChecks: number;
+  /** 账户状态：disabled 表示已被管理员禁用，登录后将被自动登出 */
+  status?: 'active' | 'disabled';
 }
 
 export type PlanType = 'single_export' | 'week' | 'month' | 'quarter' | 'year' | 'lifetime' | 'student_year';

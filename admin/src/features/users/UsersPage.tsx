@@ -6,7 +6,7 @@ import {
   useReactTable,
   type ColumnDef,
 } from '@tanstack/react-table';
-import { Search, RefreshCw, Eye, Pencil, Loader2, Users as UsersIcon } from 'lucide-react';
+import { Search, RefreshCw, Eye, Pencil, Loader2, Users as UsersIcon, KeyRound, ShieldBan, ShieldCheck } from 'lucide-react';
 import { api, type PageResult } from '@/lib/api';
 import { PageHeader } from '@/features/shared/PageHeader';
 import { DataTablePagination } from '@/features/shared/DataTablePagination';
@@ -33,6 +33,8 @@ import type { AdminUserRow, MembershipTier } from '@/types';
 import { TIER_TEXT, TIER_BADGE } from '@/types';
 import { UserEditDialog } from './UserEditDialog';
 import { UserDetailDrawer } from './UserDetailDrawer';
+import { ResetPasswordDialog } from './ResetPasswordDialog';
+import { ToggleStatusDialog } from './ToggleStatusDialog';
 
 const TIER_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'all', label: '全部等级' },
@@ -49,6 +51,8 @@ export function UsersPage() {
   const [pageSize, setPageSize] = useState(20);
   const [detailUser, setDetailUser] = useState<AdminUserRow | null>(null);
   const [editUser, setEditUser] = useState<AdminUserRow | null>(null);
+  const [resetUser, setResetUser] = useState<AdminUserRow | null>(null);
+  const [toggleUser, setToggleUser] = useState<AdminUserRow | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
@@ -130,7 +134,7 @@ export function UsersPage() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setDetailUser(row.original)}
+              onClick={(e) => { e.stopPropagation(); setDetailUser(row.original); }}
               className="h-7 gap-1 text-xs"
             >
               <Eye className="h-3.5 w-3.5" /> 详情
@@ -138,10 +142,34 @@ export function UsersPage() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setEditUser(row.original)}
+              onClick={(e) => { e.stopPropagation(); setEditUser(row.original); }}
               className="h-7 gap-1 text-xs"
             >
               <Pencil className="h-3.5 w-3.5" /> 编辑
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => { e.stopPropagation(); setResetUser(row.original); }}
+              className="h-7 gap-1 text-xs"
+            >
+              <KeyRound className="h-3.5 w-3.5" /> 重置密码
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'h-7 gap-1 text-xs',
+                row.original.status === 'disabled'
+                  ? 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50'
+                  : 'text-destructive hover:text-destructive hover:bg-destructive/10'
+              )}
+              onClick={(e) => { e.stopPropagation(); setToggleUser(row.original); }}
+            >
+              {row.original.status === 'disabled'
+                ? <ShieldCheck className="h-3.5 w-3.5" />
+                : <ShieldBan className="h-3.5 w-3.5" />}
+              {row.original.status === 'disabled' ? '启用' : '禁用'}
             </Button>
           </div>
         ),
@@ -261,12 +289,32 @@ export function UsersPage() {
         onSuccess={() => query.refetch()}
       />
 
+      <ResetPasswordDialog
+        user={resetUser}
+        onClose={() => setResetUser(null)}
+        onSuccess={() => query.refetch()}
+      />
+
+      <ToggleStatusDialog
+        user={toggleUser}
+        onClose={() => setToggleUser(null)}
+        onSuccess={() => query.refetch()}
+      />
+
       <UserDetailDrawer
         userId={detailUser?.id ?? null}
         onClose={() => setDetailUser(null)}
         onEdit={(u) => {
           setDetailUser(null);
           setEditUser(u);
+        }}
+        onResetPassword={(u) => {
+          setDetailUser(null);
+          setResetUser(u);
+        }}
+        onToggleStatus={(u) => {
+          setDetailUser(null);
+          setToggleUser(u);
         }}
       />
     </div>
