@@ -113,4 +113,20 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
+  /* 可交互元素：鼠标移入时指针变手指 */
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  a:not([aria-disabled="true"]),
+  select:not(:disabled),
+  label[for],
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  .cursor-pointer {
+    cursor: pointer;
+  }
+  /* 禁用状态保持默认箭头 */
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
 }

@@ -200,28 +200,33 @@ router.get('/users/:id', requireAdmin, async (req: Request, res: Response) => {
     const admin = getAdminClient();
     const id = req.params.id;
 
-    const { data: user, error: userErr } = await admin
-      .from('users')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
+    // 三个查询互不依赖，一次并行发出（云 Supabase 每次往返 ~300-1100ms，
+    // 串行会累加延迟，并行只受最慢的一个约束）
+    const [userRes, ordersRes, resumesRes] = await Promise.all([
+      admin.from('users').select('*').eq('id', id).maybeSingle(),
+      admin.from('orders').select('*').eq('user_id', id).order('created_at', { ascending: false }),
+      admin.from('resumes').select('*').eq('user_id', id).order('updated_at', { ascending: false }),
+    ]);
+
+    const { data: user, error: userErr } = userRes;
     if (userErr) {
       return res.status(400).json({ error: { code: 'DB_READ', message: `查询用户失败: ${userErr.message}` } });
     }
     if (!user) {
       return res.status(404).json({ error: { code: 'NOT_FOUND', message: '用户不存在' } });
     }
+    if (ordersRes.error) {
+      return res.status(400).json({ error: { code: 'DB_READ', message: `查询订单失败: ${ordersRes.error.message}` } });
+    }
+    if (resumesRes.error) {
+      return res.status(400).json({ error: { code: 'DB_READ', message: `查询简历失败: ${resumesRes.error.message}` } });
+    }
 
-    const [ordersRes, resumesRes] = await Promise.all([
-      admin.from('orders').select('*').eq('user_id', id).order('created_at', { ascending: false }),
-      admin.from('resumes').select('*').eq('user_id', id).order('updated_at', { ascending: false }),
-    ]);
-
-    const emailMap = await attachUserEmails(admin, (ordersRes.data || []).map((o) => ({ user_id: o.user_id })));
-
+    // 订单/简历的 user_id 就是当前用户，直接复用已查到的 user.email，
+    // 避免再发一次 users 表查询（attachUserEmails 对单用户详情是多余的）
     const orders = (ordersRes.data || []).map((o) => ({
       ...o,
-      user_email: emailMap.get(o.user_id) || null,
+      user_email: user.email || null,
       plan_name: planName(o.plan_type),
     }));
 
