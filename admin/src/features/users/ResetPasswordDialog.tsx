@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { KeyRound, Loader2 } from 'lucide-react';
@@ -23,10 +22,9 @@ interface ResetPasswordDialogProps {
 /**
  * 重置用户密码确认弹窗：重置后密码固定为 123456。
  * Supabase 密码为 bcrypt 哈希存储，无法查看明文，仅支持重置。
+ * 受控组件：open 直接由 props 驱动（避免常驻挂载时 state 不同步导致点击无反应）。
  */
 export function ResetPasswordDialog({ user, onClose, onSuccess }: ResetPasswordDialogProps) {
-  const [open, setOpen] = useState(!!user);
-
   const mutation = useMutation({
     mutationFn: () => api.post<{ success: boolean }>(`/users/${user!.id}/reset-password`),
     onSuccess: () => {
@@ -40,15 +38,10 @@ export function ResetPasswordDialog({ user, onClose, onSuccess }: ResetPasswordD
     },
   });
 
-  const handleOpenChange = (next: boolean) => {
-    setOpen(next);
-    if (!next) onClose();
-  };
-
   return (
     <AlertDialog
-      open={open && !!user}
-      onOpenChange={handleOpenChange}
+      open={!!user}
+      onOpenChange={(next) => !next && onClose()}
     >
       <AlertDialogContent>
         <AlertDialogHeader>

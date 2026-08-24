@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, Pencil, FileText, ShoppingCart, KeyRound, ShieldBan, ShieldCheck } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -20,12 +21,13 @@ import {
   PLAN_TYPE_TEXT,
   RESUME_STATUS_TEXT,
 } from '@/types';
+import { ResetPasswordDialog } from './ResetPasswordDialog';
+import { ToggleStatusDialog } from './ToggleStatusDialog';
+
 interface UserDetailDrawerProps {
   userId: string | null;
   onClose: () => void;
   onEdit: (user: AdminUserRow) => void;
-  onToggleStatus?: (user: AdminUserRow) => void;
-  onResetPassword?: (user: AdminUserRow) => void;
 }
 
 function Field({ label, value }: { label: string; value: string | number | null }) {
@@ -37,7 +39,10 @@ function Field({ label, value }: { label: string; value: string | number | null 
   );
 }
 
-export function UserDetailDrawer({ userId, onClose, onEdit, onToggleStatus, onResetPassword }: UserDetailDrawerProps) {
+export function UserDetailDrawer({ userId, onClose, onEdit }: UserDetailDrawerProps) {
+  const [showReset, setShowReset] = useState(false);
+  const [showToggle, setShowToggle] = useState(false);
+
   const query = useQuery({
     queryKey: ['admin', 'user', userId],
     queryFn: () => api.get<UserDetail>(`/users/${userId}`),
@@ -76,7 +81,7 @@ export function UserDetailDrawer({ userId, onClose, onEdit, onToggleStatus, onRe
                     variant="outline"
                     size="sm"
                     className="h-7 gap-1 text-xs"
-                    onClick={() => onResetPassword?.(user)}
+                    onClick={() => setShowReset(true)}
                   >
                     <KeyRound className="h-3.5 w-3.5" /> 重置密码
                   </Button>
@@ -84,7 +89,7 @@ export function UserDetailDrawer({ userId, onClose, onEdit, onToggleStatus, onRe
                     variant={user.status === 'disabled' ? 'outline' : 'destructive'}
                     size="sm"
                     className="h-7 gap-1 text-xs"
-                    onClick={() => onToggleStatus?.(user)}
+                    onClick={() => setShowToggle(true)}
                   >
                     {user.status === 'disabled'
                       ? <ShieldCheck className="h-3.5 w-3.5" />
@@ -208,6 +213,17 @@ export function UserDetailDrawer({ userId, onClose, onEdit, onToggleStatus, onRe
           </div>
         )}
       </DialogContent>
+
+      <ResetPasswordDialog
+        user={showReset && user ? user : null}
+        onClose={() => setShowReset(false)}
+        onSuccess={() => query.refetch()}
+      />
+      <ToggleStatusDialog
+        user={showToggle && user ? user : null}
+        onClose={() => setShowToggle(false)}
+        onSuccess={() => query.refetch()}
+      />
     </Dialog>
   );
 }

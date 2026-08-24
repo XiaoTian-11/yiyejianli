@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ShieldBan, ShieldCheck, Loader2 } from 'lucide-react';
@@ -24,9 +23,9 @@ interface ToggleStatusDialogProps {
 /**
  * 禁用/启用用户确认弹窗。
  * disabled 状态下该用户登录后将被自动登出，无法使用平台。
+ * 受控组件：open 直接由 props 驱动（避免常驻挂载时 state 不同步导致点击无反应）。
  */
 export function ToggleStatusDialog({ user, onClose, onSuccess }: ToggleStatusDialogProps) {
-  const [open, setOpen] = useState(!!user);
   const disabling = user?.status !== 'disabled';
 
   const mutation = useMutation({
@@ -45,13 +44,11 @@ export function ToggleStatusDialog({ user, onClose, onSuccess }: ToggleStatusDia
     },
   });
 
-  const handleOpenChange = (next: boolean) => {
-    setOpen(next);
-    if (!next) onClose();
-  };
-
   return (
-    <AlertDialog open={open && !!user} onOpenChange={handleOpenChange}>
+    <AlertDialog
+      open={!!user}
+      onOpenChange={(next) => !next && onClose()}
+    >
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
