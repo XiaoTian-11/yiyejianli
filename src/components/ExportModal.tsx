@@ -180,7 +180,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
               {step === 'pay' && (
                 <div className="flex flex-col items-center justify-center py-2">
-                  <h4 className="font-extrabold text-slate-900 text-base mb-1">微信扫码支付</h4>
+                  <h4 className="font-extrabold text-slate-900 text-base mb-1">选择支付方式</h4>
                   <PayWithQR
                     planType={selectedPlanId}
                     onSuccess={handlePaymentSuccess}

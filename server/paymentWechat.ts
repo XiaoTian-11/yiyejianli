@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { readFileSync } from 'fs';
-import type { OrderProvider } from './paymentService';
+import type { OrderProvider, JsapiParams } from './paymentService';
 
 // ============================================================================
 // 微信支付 APIv3 Native 扫码支付 provider（PAYMENT_PROVIDER=wechat）
@@ -126,11 +126,63 @@ export function verifyNotifySignature(
   if (!ok) throw new Error('微信回调验签失败');
 }
 
+/** 构建 JSAPI 调起签名（微信内 WeixinJSBridge 用） */
+function buildJsapiPaySign(cfg: ReturnType<typeof loadWechatConfig>, params: { appId: string; timeStamp: string; nonceStr: string; package: string }): string {
+  const message = `${params.appId}\n${params.timeStamp}\n${params.nonceStr}\n${params.package}\n`;
+  return crypto.createSign('RSA-SHA256').update(message).sign(cfg.privateKey, 'base64');
+}
+
+/** 生成 JSAPI 调起参数（微信内直接拉起支付，无需扫码） */
+function makeJsapiParams(cfg: ReturnType<typeof loadWechatConfig>, prepayId: string): JsapiParams {
+  const timeStamp = String(Math.floor(Date.now() / 1000));
+  const nonceStr = crypto.randomBytes(16).toString('hex');
+  const pkg = `prepay_id=${prepayId}`;
+  return {
+    appId: cfg.appid,
+    timeStamp,
+    nonceStr,
+    package: pkg,
+    signType: 'RSA',
+    paySign: buildJsapiPaySign(cfg, { appId: cfg.appid, timeStamp, nonceStr, package: pkg }),
+  };
+}
+
+/** 公众号网页授权：code 换 openid（用于 JSAPI 支付） */
+export async function getOpenidByCode(code: string): Promise<{ openid: string; scope?: string }> {
+  const appid = process.env.WECHAT_APPID || '';
+  const secret = process.env.WECHAT_APPSECRET || '';
+  if (!appid || !secret) throw new Error('微信JSAPI支付需要 WECHAT_APPID + WECHAT_APPSECRET（公众号AppSecret）');
+  const url = `https://api.weixin.qq.com/sns/oauth2/access_token?appid=${appid}&secret=${secret}&code=${code}&grant_type=authorization_code`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (!data.openid) throw new Error(`换取openid失败: ${JSON.stringify(data)}`);
+  return { openid: data.openid, scope: data.scope };
+}
+
 export const wechatProvider: OrderProvider = {
   name: 'wechat',
 
-  async createOrder({ orderId, description, amountFen, notifyUrl }) {
+  async createOrder({ orderId, description, amountFen, notifyUrl, channel, openid }) {
     const cfg = loadWechatConfig();
+
+    // 微信内（JSAPI）：直接调起支付，需要 openid
+    if (channel === 'jsapi') {
+      if (!openid) throw new Error('JSAPI支付缺少 openid（需先通过公众号网页授权获取）');
+      const body = {
+        appid: cfg.appid,
+        mchid: cfg.mchid,
+        description: description.slice(0, 127),
+        out_trade_no: orderId,
+        notify_url: notifyUrl,
+        amount: { total: amountFen, currency: 'CNY' },
+        payer: { openid },
+      };
+      const data = await requestWechat('POST', '/v3/pay/transactions/jsapi', body);
+      if (!data.prepay_id) throw new Error(`JSAPI下单未返回 prepay_id: ${JSON.stringify(data)}`);
+      return { codeUrl: '', gatewayTradeNo: undefined, jsapiParams: makeJsapiParams(cfg, data.prepay_id) };
+    }
+
+    // 默认：Native 扫码支付（桌面/非微信浏览器）
     const body = {
       appid: cfg.appid,
       mchid: cfg.mchid,

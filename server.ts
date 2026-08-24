@@ -141,23 +141,55 @@ Rules: (1) Return same-keys JSON only. (2) Use professional CV language, preserv
   };
 
   // POST /api/payment/create-order — 创建支付订单
+  // body: { planType, paymentMethod, channel?: 'native'|'jsapi', openid?: string }
+  //   channel='jsapi'（微信内直接调起）需要 openid；默认 native（扫码）
   app.post("/api/payment/create-order", async (req: express.Request, res: express.Response) => {
     try {
       const admin = getAdminClient();
       const provider = getPaymentProvider();
       const userId = await resolveUserId(req);
-      const { planType, paymentMethod } = req.body || {};
-      const result = await createOrder({ admin, provider }, { userId, planType, paymentMethod });
+      const { planType, paymentMethod, channel, openid } = req.body || {};
+      const result = await createOrder({ admin, provider }, { userId, planType, paymentMethod, channel, openid });
       res.json({
         orderId: result.order.id,
         amount: result.order.amount,
         amountFen: result.amountFen,
         codeUrl: result.codeUrl,
+        jsapiParams: result.jsapiParams || undefined,
         expiresAt: result.order.expires_at,
         provider: provider.name,
       });
     } catch (err) {
       paymentError(res, err);
+    }
+  });
+
+  // GET /api/payment/wechat/oauth-url — 公众号网页授权跳转地址（微信内 JSAPI 支付前取 openid）
+  // 返回 { url }，前端 302 到该地址，用户确认后回调 /api/payment/wechat/oauth/callback
+  app.get("/api/payment/wechat/oauth-url", (_req: express.Request, res: express.Response) => {
+    const appid = process.env.WECHAT_APPID || "";
+    if (!appid) {
+      return res.status(500).json({ error: { code: "CONFIG", message: "未配置 WECHAT_APPID" } });
+    }
+    const redirectUri = encodeURIComponent(`${(process.env.APP_URL || "").replace(/\/$/, "")}/api/payment/wechat/oauth/callback`);
+    const url = `https://open.weixin.qq.com/connect/oauth2/authorize?appid=${appid}&redirect_uri=${redirectUri}&response_type=code&scope=snsapi_base&state=pay#wechat_redirect`;
+    res.json({ url });
+  });
+
+  // GET /api/payment/wechat/oauth/callback — 微信授权回调：code 换 openid，302 回前端 /payment
+  app.get("/api/payment/wechat/oauth/callback", async (req: express.Request, res: express.Response) => {
+    try {
+      const code = String(req.query.code || "");
+      if (!code) {
+        return res.redirect(`${(process.env.APP_URL || "").replace(/\/$/, "")}/payment?oauth_error=1`);
+      }
+      const { getOpenidByCode } = await import("./server/paymentWechat");
+      const { openid } = await getOpenidByCode(code);
+      const frontUrl = `${(process.env.APP_URL || "").replace(/\/$/, "")}/payment?openid=${encodeURIComponent(openid)}`;
+      res.redirect(frontUrl);
+    } catch (err: any) {
+      console.error("[oauth] 换取openid失败:", err?.message || err);
+      res.redirect(`${(process.env.APP_URL || "").replace(/\/$/, "")}/payment?oauth_error=1`);
     }
   });
 

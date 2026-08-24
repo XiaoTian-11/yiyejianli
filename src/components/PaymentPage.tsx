@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronLeft, ShieldCheck, CheckCircle2, Sparkles, Clock, QrCode } from 'lucide-react';
+import { ChevronLeft, ShieldCheck, CheckCircle2, Sparkles, Clock, Smartphone } from 'lucide-react';
 import { PayWithQR } from './PayWithQR';
 import { getPlanByType } from '../lib/pricing';
 import { SEO } from './SEO';
@@ -90,9 +90,9 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ onBack, onSuccess, pla
             </div>
           </div>
 
-          {/* Payment (QR) */}
+          {/* Payment */}
           <div className="space-y-8">
-            <h2 className="text-2xl font-bold text-slate-800">微信扫码支付</h2>
+            <h2 className="text-2xl font-bold text-slate-800">选择支付方式</h2>
 
             <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white space-y-6 shadow-2xl shadow-blue-100">
               <div className="flex items-center justify-between">
@@ -109,7 +109,7 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ onBack, onSuccess, pla
               </div>
 
               <div className="flex items-center justify-center gap-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                <p className="flex items-center gap-1"><QrCode className="w-3 h-3" /> 微信扫码</p>
+                <p className="flex items-center gap-1"><Smartphone className="w-3 h-3" /> 微信内一键支付</p>
                 <div className="w-1 h-1 bg-slate-700 rounded-full" />
                 <p>安全加密</p>
                 <div className="w-1 h-1 bg-slate-700 rounded-full" />

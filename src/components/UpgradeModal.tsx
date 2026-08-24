@@ -205,7 +205,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onS
 
               {step === 'pay' && (
                 <div className="flex flex-col items-center justify-center py-2">
-                  <h4 className="font-extrabold text-[#111827] text-lg mb-1">微信扫码支付</h4>
+                  <h4 className="font-extrabold text-[#111827] text-lg mb-1">选择支付方式</h4>
                   <p className="text-slate-500 text-xs mb-3 font-medium">
                     订阅套餐：<span className="text-slate-800 font-bold">{selectedPlan.name}</span>
                   </p>

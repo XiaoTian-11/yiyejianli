@@ -11,7 +11,7 @@ import type { OrderProvider } from './paymentService';
 export const mockProvider: OrderProvider = {
   name: 'mock',
 
-  async createOrder({ orderId }) {
+  async createOrder({ orderId, channel }) {
     // 生成一个形似微信 native 支付链接的假 URL，保证二维码渲染链路与真实一致
     const rand = Math.random().toString(36).slice(2, 10);
     return {

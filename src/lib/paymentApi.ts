@@ -16,6 +16,14 @@ export interface CreateOrderResult {
   amount: number;
   amountFen: number;
   codeUrl: string;
+  jsapiParams?: {
+    appId: string;
+    timeStamp: string;
+    nonceStr: string;
+    package: string;
+    signType: string;
+    paySign: string;
+  } | null;
   expiresAt: string;
   provider: string;
 }
@@ -34,6 +42,8 @@ export async function createOrder(params: {
   userId?: string;
   planType: string;
   paymentMethod?: string;
+  channel?: 'native' | 'jsapi';
+  openid?: string;
 }): Promise<CreateOrderResult> {
   const res = await fetch('/api/payment/create-order', {
     method: 'POST',
@@ -55,6 +65,16 @@ export async function queryOrder(orderId: string): Promise<OrderStatusResult> {
     throw new Error(data?.error?.message || '查询订单失败');
   }
   return data as OrderStatusResult;
+}
+
+/** 获取公众号网页授权跳转地址（微信内 JSAPI 支付前取 openid） */
+export async function getOauthUrl(): Promise<string> {
+  const res = await fetch('/api/payment/wechat/oauth-url');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.url) {
+    throw new Error(data?.error?.message || '获取微信授权地址失败');
+  }
+  return data.url as string;
 }
 
 /** 模拟支付确认（仅 mock 模式可用；真实模式下服务端会拒绝） */

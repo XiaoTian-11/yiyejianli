@@ -63,6 +63,7 @@ const expectedUser: User = {
   id: 'test-user-id',
   email: 'test@example.com',
   tier: 'free',
+  status: 'active',
   memberUntil: undefined,
   remainingPdfExports: 0,
   remainingPngExports: 0,
