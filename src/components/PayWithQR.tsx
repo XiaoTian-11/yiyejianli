@@ -33,9 +33,36 @@ interface PayWithQRProps {
 }
 
 const WECHAT_OAUTH_KEY = 'yjl_wechat_pay_intent';
+const WECHAT_OPENID_CACHE_KEY = 'yjl_wechat_openid_cache';
 
 /** 是否在微信内置浏览器内 */
 const isWeChatBrowser = (): boolean => /MicroMessenger/i.test(navigator.userAgent);
+
+/** 读取缓存的 openid（同一微信用户+站内账号复用，避免每次都走授权跳转） */
+function getCachedOpenid(uid?: string): string | null {
+  try {
+    const raw = localStorage.getItem(WECHAT_OPENID_CACHE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data?.openid) return null;
+    if (uid && data.uid && data.uid !== uid) return null; // 换了站内账号 → 重新授权
+    return data.openid as string;
+  } catch {
+    return null;
+  }
+}
+
+/** 缓存 openid（授权回跳拿到后存，供下次直接调起） */
+function saveOpenidCache(openid: string, uid?: string) {
+  try {
+    localStorage.setItem(
+      WECHAT_OPENID_CACHE_KEY,
+      JSON.stringify({ openid, uid: uid || null, savedAt: Date.now() })
+    );
+  } catch {
+    /* localStorage 不可用时忽略，不影响支付 */
+  }
+}
 
 /** 微信 JSAPI 调起（WeixinJSBridge） */
 function invokeWechatPay(params: NonNullable<CreateOrderResult['jsapiParams']>): Promise<'ok' | 'cancel'> {
@@ -137,6 +164,7 @@ export const PayWithQR: React.FC<PayWithQRProps> = ({ planType, userId, onSucces
     if (autoPayHandledRef.current === openid) return;
     autoPayHandledRef.current = openid;
     sessionStorage.removeItem(WECHAT_OAUTH_KEY);
+    saveOpenidCache(openid, userId); // 缓存 openid，下次直接调起、免跳授权
     setPaying(true);
     createOrder({ userId, planType, paymentMethod: 'wechat', channel: 'jsapi', openid })
       .then(async (result) => {
@@ -188,7 +216,7 @@ export const PayWithQR: React.FC<PayWithQRProps> = ({ planType, userId, onSucces
       // 微信内 → 需要 openid（OAuth 获取）→ JSAPI 调起
       if (inWeChat) {
         const params = new URLSearchParams(window.location.search);
-        const openid = params.get('openid');
+        const openid = params.get('openid') || getCachedOpenid(userId);
         if (!openid) {
           sessionStorage.setItem(WECHAT_OAUTH_KEY, planType);
           // planType 编码进 state 随授权往返，回跳后经 ?plan= 恢复（微信 WebView 会清空 sessionStorage）
