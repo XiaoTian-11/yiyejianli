@@ -114,19 +114,23 @@ export const PayWithQR: React.FC<PayWithQRProps> = ({ planType, userId, onSucces
   // 清除 URL 上的 openid / oauth_error 参数（授权回调残留）
   const cleanUrl = useCallback(() => {
     const url = new URL(window.location.href);
-    if (url.searchParams.has('openid') || url.searchParams.has('oauth_error')) {
+    if (url.searchParams.has('openid') || url.searchParams.has('oauth_error') || url.searchParams.has('plan')) {
       url.searchParams.delete('openid');
       url.searchParams.delete('oauth_error');
+      url.searchParams.delete('plan');
       window.history.replaceState({}, '', url.toString());
     }
   }, []);
 
   // 微信内 + OAuth 回调带回 openid + 有支付意图 → 自动继续 JSAPI 支付
+  // 支付意图优先从 URL ?plan= 读取（服务端经 state 回传；微信 WebView 会清空 sessionStorage），
+  // sessionStorage 作为兜底（同一页面内未跳转授权页的直达场景）
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const openid = params.get('openid');
-    const intent = sessionStorage.getItem(WECHAT_OAUTH_KEY);
-    if (openid && intent === planType) {
+    const planParam = params.get('plan');
+    const intent = planParam || sessionStorage.getItem(WECHAT_OAUTH_KEY);
+    if (openid && intent && intent === planType) {
       sessionStorage.removeItem(WECHAT_OAUTH_KEY);
       setPaying(true);
       createOrder({ userId, planType, paymentMethod: 'wechat', channel: 'jsapi', openid })
@@ -183,8 +187,9 @@ export const PayWithQR: React.FC<PayWithQRProps> = ({ planType, userId, onSucces
         const openid = params.get('openid');
         if (!openid) {
           sessionStorage.setItem(WECHAT_OAUTH_KEY, planType);
-          const oauthUrl = await getOauthUrl();
-          window.location.href = oauthUrl; // 跳转授权，回调带回 openid 后自动继续
+          // planType 编码进 state 随授权往返，回跳后经 ?plan= 恢复（微信 WebView 会清空 sessionStorage）
+          const oauthUrl = await getOauthUrl(planType);
+          window.location.href = oauthUrl; // 跳转授权，回调带回 openid+plan 后自动继续
           return;
         }
         setPaying(true);

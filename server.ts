@@ -164,28 +164,35 @@ Rules: (1) Return same-keys JSON only. (2) Use professional CV language, preserv
     }
   });
 
-  // GET /api/payment/wechat/oauth-url — 公众号网页授权跳转地址（微信内 JSAPI 支付前取 openid）
-  // 返回 { url }，前端 302 到该地址，用户确认后回调 /api/payment/wechat/oauth/callback
-  app.get("/api/payment/wechat/oauth-url", (_req: express.Request, res: express.Response) => {
+  // GET /api/payment/wechat/oauth-url?planType=month — 公众号网页授权跳转地址（微信内 JSAPI 支付前取 openid）
+  // planType 经 state 参数随授权往返携带，回跳后前端据此自动继续支付（微信 WebView 会清空 sessionStorage，
+  // 不能依赖 sessionStorage 传递支付意图）
+  app.get("/api/payment/wechat/oauth-url", (req: express.Request, res: express.Response) => {
     const appid = process.env.WECHAT_APPID || "";
     if (!appid) {
       return res.status(500).json({ error: { code: "CONFIG", message: "未配置 WECHAT_APPID" } });
     }
+    const planType = String(req.query.planType || "").replace(/[^a-zA-Z0-9_]/g, "");
+    const state = planType ? `pay:${planType}` : "pay";
     const redirectUri = encodeURIComponent(`${(process.env.APP_URL || "").replace(/\/$/, "")}/api/payment/wechat/oauth/callback`);
-    const url = `https://open.weixin.qq.com/connect/oauth2/authorize?appid=${appid}&redirect_uri=${redirectUri}&response_type=code&scope=snsapi_base&state=pay#wechat_redirect`;
+    const url = `https://open.weixin.qq.com/connect/oauth2/authorize?appid=${appid}&redirect_uri=${redirectUri}&response_type=code&scope=snsapi_base&state=${encodeURIComponent(state)}#wechat_redirect`;
     res.json({ url });
   });
 
   // GET /api/payment/wechat/oauth/callback — 微信授权回调：code 换 openid，302 回前端 /payment
+  // 回跳带 openid 与 plan（从 state 还原，供前端自动继续 JSAPI 支付）
   app.get("/api/payment/wechat/oauth/callback", async (req: express.Request, res: express.Response) => {
     try {
       const code = String(req.query.code || "");
       if (!code) {
         return res.redirect(`${(process.env.APP_URL || "").replace(/\/$/, "")}/payment?oauth_error=1`);
       }
+      // 解析 state 还原 planType（格式 pay:<planType>）
+      const state = String(req.query.state || "pay");
+      const planType = state.startsWith("pay:") ? state.slice(4) : "";
       const { getOpenidByCode } = await import("./server/paymentWechat");
       const { openid } = await getOpenidByCode(code);
-      const frontUrl = `${(process.env.APP_URL || "").replace(/\/$/, "")}/payment?openid=${encodeURIComponent(openid)}`;
+      const frontUrl = `${(process.env.APP_URL || "").replace(/\/$/, "")}/payment?openid=${encodeURIComponent(openid)}${planType ? `&plan=${encodeURIComponent(planType)}` : ""}`;
       res.redirect(frontUrl);
     } catch (err: any) {
       console.error("[oauth] 换取openid失败:", err?.message || err);

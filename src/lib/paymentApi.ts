@@ -67,9 +67,11 @@ export async function queryOrder(orderId: string): Promise<OrderStatusResult> {
   return data as OrderStatusResult;
 }
 
-/** 获取公众号网页授权跳转地址（微信内 JSAPI 支付前取 openid） */
-export async function getOauthUrl(): Promise<string> {
-  const res = await fetch('/api/payment/wechat/oauth-url');
+/** 获取公众号网页授权跳转地址（微信内 JSAPI 支付前取 openid）
+ *  planType 编码进 state 参数随授权往返，回跳后前端据此自动继续支付（微信 WebView 会清空 sessionStorage） */
+export async function getOauthUrl(planType?: string): Promise<string> {
+  const qs = planType ? `?planType=${encodeURIComponent(planType)}` : '';
+  const res = await fetch(`/api/payment/wechat/oauth-url${qs}`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.url) {
     throw new Error(data?.error?.message || '获取微信授权地址失败');
