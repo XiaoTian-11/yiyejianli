@@ -171,35 +171,6 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onS
                     </div>
                   </div>
 
-                  {/* Bottom Select Action */}
-                  <div className="flex items-center justify-between mt-4">
-                    <p className="text-[11px] text-slate-400 font-medium select-none">
-                      * 开通即代表您同意《
-                      <button 
-                        type="button" 
-                        onClick={() => onOpenAgreement?.('service')} 
-                        className="text-amber-600 hover:underline cursor-pointer font-bold bg-transparent border-none p-0 inline"
-                      >
-                        壹页简历服务协议
-                      </button>
-                      》与《
-                      <button 
-                        type="button" 
-                        onClick={() => onOpenAgreement?.('privacy')} 
-                        className="text-amber-600 hover:underline cursor-pointer font-bold bg-transparent border-none p-0 inline"
-                      >
-                        隐私政策
-                      </button>
-                      》
-                    </p>
-                    <button
-                      onClick={handleSelectPlan}
-                      className="px-8 py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
-                    >
-                      <CreditCard className="w-4 h-4 text-amber-400" />
-                      立即订阅「{selectedPlan.name}」
-                    </button>
-                  </div>
                 </div>
               )}
 
@@ -235,6 +206,28 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onS
                 </div>
               )}
             </div>
+
+            {/* 固定底部 CTA：不随内容滚动，悬浮在弹窗底部 */}
+            {step === 'plans' && (
+              <div className="px-8 pb-6 pt-3 shrink-0 border-t border-slate-100">
+                <div className="flex items-center justify-between gap-4">
+                  <p className="text-[10px] text-slate-400 font-medium select-none leading-snug max-w-[55%]">
+                    * 开通即代表您同意《
+                    <button type="button" onClick={() => onOpenAgreement?.('service')} className="text-amber-600 hover:underline cursor-pointer font-bold bg-transparent border-none p-0 inline">壹页简历服务协议</button>
+                    》与《
+                    <button type="button" onClick={() => onOpenAgreement?.('privacy')} className="text-amber-600 hover:underline cursor-pointer font-bold bg-transparent border-none p-0 inline">隐私政策</button>
+                    》
+                  </p>
+                  <button
+                    onClick={handleSelectPlan}
+                    className="px-8 py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2 cursor-pointer shrink-0"
+                  >
+                    <CreditCard className="w-4 h-4 text-amber-400" />
+                    立即订阅「{selectedPlan.name}」
+                  </button>
+                </div>
+              </div>
+            )}
           </motion.div>
         </>
       )}
