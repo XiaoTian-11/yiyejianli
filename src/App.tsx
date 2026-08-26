@@ -157,6 +157,20 @@ export default function App() {
         // 会话已恢复即放行守卫（authLoading 只代表"会话是否就绪"，不等待数据加载，
         // 否则 checkAndDowngrade 提前 return 时 authLoading 会卡在 true 导致受保护页面白屏）
         setAuthLoading(false);
+        // 登录后统一跳转：跳回访问的目标页（pendingLoginRedirect） / 应用模板进编辑器（pendingTemplateId）。
+        // 必须在 checkedUser 提前 return 之前也执行——否则 users 表有记录（checkedUser 存在）时
+        // 登录后不跳转、停留原页（复现：模板中心点模板 → 登录 → 没进编辑器）。
+        const handlePostLoginJump = () => {
+          if (pendingLoginRedirect.current) {
+            navigate(pendingLoginRedirect.current);
+            pendingLoginRedirect.current = null;
+          }
+          if (pendingTemplateId.current) {
+            const tid = pendingTemplateId.current;
+            pendingTemplateId.current = null;
+            void applyTemplateAndEnter(tid, normalizedUser.uid);
+          }
+        };
         // Load list and set active
         const list = await refreshResumesList(normalizedUser.uid);
         refreshOrders(normalizedUser.uid);
@@ -190,6 +204,7 @@ export default function App() {
               if (downgraded) {
                 console.log('Membership expired, auto-downgraded to free');
               }
+              handlePostLoginJump();
               return;
             }
           }
@@ -207,18 +222,7 @@ export default function App() {
           remainingAtsChecks: 0,
         });
 
-        // 登录前访问了受保护页面（如 /dashboard）则跳回目标页；否则留在原页面
-        if (pendingLoginRedirect.current) {
-          navigate(pendingLoginRedirect.current);
-          pendingLoginRedirect.current = null;
-        }
-        // 未登录时在模板中心选中了模板：登录成功后自动应用该模板进入编辑器
-        if (pendingTemplateId.current) {
-          const tid = pendingTemplateId.current;
-          pendingTemplateId.current = null;
-          void applyTemplateAndEnter(tid, normalizedUser.uid);
-        }
-        setAuthLoading(false);
+        handlePostLoginJump();
       } else {
         setUser(null);
         setAppUser(null);
