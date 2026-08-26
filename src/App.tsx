@@ -115,6 +115,8 @@ export default function App() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+  // 模板中心点"立即使用"→ 创建简历并进入编辑器期间的全屏 loading（建单是网络请求，给用户即时反馈）
+  const [creatingResume, setCreatingResume] = useState(false);
 
   const openAgreement = (tab: 'service' | 'privacy', e?: React.MouseEvent) => {
     if (e) e.preventDefault();
@@ -501,6 +503,7 @@ export default function App() {
   // 应用所选模板：创建简历并进入编辑器（登录后 / 直接点击共用）
   const applyTemplateAndEnter = async (id: TemplateId, uid: string) => {
     setTemplateId(id);
+    setCreatingResume(true);
 
     const templateNames: Record<string, string> = {
       modern: '现代简约简历',
@@ -534,13 +537,11 @@ export default function App() {
     setData(initialIndustryData);
     lastSavedDataRef.current = JSON.stringify(initialIndustryData);
 
-    try {
-      await refreshResumesList(uid);
-    } catch (err) {
-      console.error("Failed to refresh resumes list", err);
-    }
-
+    // 立即进入编辑器，不再阻塞等待列表刷新——此前 createNewResume + refreshResumesList
+    // 两次串行网络请求让跳转变慢；列表改后台异步刷新，减少一次网络往返
     navigate(PAGE_PATH.builder);
+    setCreatingResume(false);
+    refreshResumesList(uid);
   };
 
   // 定价页选中方案 → 跳转支付页
@@ -1039,6 +1040,19 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
       </main>
+
+      {/* 创建简历并进入编辑器期间的全屏 loading 反馈 */}
+      {creatingResume && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl px-8 py-6 flex items-center gap-4">
+            <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+            <div>
+              <p className="text-sm font-bold text-slate-800">正在创建您的简历...</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">正在应用模板，请稍候</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       <AuthModal
