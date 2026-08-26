@@ -164,7 +164,7 @@ export const CreativeDesignerTemplate: React.FC<TemplateProps> = ({ data }) => {
       <div className="absolute bottom-0 left-0 w-80 h-80 bg-pink-100/10 blur-[100px] rounded-full translate-y-1/3 -translate-x-1/3 pointer-events-none" />
 
       {/* Modern Asymmetric Header */}
-      <header className="flex flex-col md:flex-row md:items-end justify-between border-b border-indigo-100 pb-5 gap-4 relative z-10">
+      <header className="flex flex-col @md:flex-row @md:items-end justify-between border-b border-indigo-100 pb-5 gap-4 relative z-10">
         <div className="space-y-1">
           <ResumePhoto photo={data.personalInfo.photo} fullName={data.personalInfo.fullName} />
           <h1 className="text-4xl font-black tracking-tight text-slate-900 uppercase">
@@ -199,16 +199,16 @@ export const CreativeDesignerTemplate: React.FC<TemplateProps> = ({ data }) => {
       </header>
 
       {/* Main Grid: Split column design */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 relative z-10-grid">
+      <div className="grid grid-cols-1 @md:grid-cols-12 gap-6 relative z-10-grid">
         {/* Left column (60%) */}
-        <div className="md:col-span-8 space-y-6">
+        <div className="@md:col-span-8 space-y-6">
           {data.sections
             .filter(s => s.type !== 'personal' && s.type !== 'skills')
             .map(s => renderSection(s))}
         </div>
 
         {/* Right column (40%) */}
-        <div className="md:col-span-4 space-y-6">
+        <div className="@md:col-span-4 space-y-6">
           {/* Render Skills separately in gorgeous pill groups with gradient border tags */}
           {skillsToRender.length > 0 && (
             <section className="p-5 bg-[#fafafa]/80 backdrop-blur border border-slate-150 rounded-3xl space-y-3">

@@ -141,21 +141,31 @@ Rules: (1) Return same-keys JSON only. (2) Use professional CV language, preserv
   };
 
   // POST /api/payment/create-order — 创建支付订单
-  // body: { planType, paymentMethod, channel?: 'native'|'jsapi', openid?: string }
-  //   channel='jsapi'（微信内直接调起）需要 openid；默认 native（扫码）
+  // body: { planType, paymentMethod, channel?: 'native'|'jsapi'|'h5', openid?, payerClientIp? }
+  //   channel='jsapi'（微信内直接调起）需要 openid；channel='h5'（微信外手机浏览器）需要 payerClientIp；
+  //   默认 native（扫码）
   app.post("/api/payment/create-order", async (req: express.Request, res: express.Response) => {
     try {
       const admin = getAdminClient();
       const provider = getPaymentProvider();
       const userId = await resolveUserId(req);
-      const { planType, paymentMethod, channel, openid } = req.body || {};
-      const result = await createOrder({ admin, provider }, { userId, planType, paymentMethod, channel, openid });
+      const { planType, paymentMethod, channel, openid, payerClientIp } = req.body || {};
+      // H5 支付需要用户真实公网 IP：前端可能不传，此处理顺 nginx X-Forwarded-For，取第一个（客户端 IP）
+      const clientIp = (payerClientIp ||
+        String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() ||
+        req.ip ||
+        "").replace(/^::ffff:/, "");
+      const result = await createOrder(
+        { admin, provider },
+        { userId, planType, paymentMethod, channel, openid, payerClientIp: clientIp }
+      );
       res.json({
         orderId: result.order.id,
         amount: result.order.amount,
         amountFen: result.amountFen,
         codeUrl: result.codeUrl,
         jsapiParams: result.jsapiParams || undefined,
+        h5Url: result.h5Url || undefined,
         expiresAt: result.order.expires_at,
         provider: provider.name,
       });

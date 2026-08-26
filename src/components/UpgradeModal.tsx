@@ -68,10 +68,10 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onS
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-white rounded-[2.5rem] shadow-2xl z-[210] overflow-hidden border border-slate-100"
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl flex flex-col max-h-[92vh] bg-white rounded-[2.5rem] shadow-2xl z-[210] overflow-hidden border border-slate-100"
           >
-            {/* Header Area */}
-            <div className="relative p-8 pb-4">
+            {/* Header Area（固定，不随内容滚动） */}
+            <div className="relative p-8 pb-4 shrink-0">
               <button
                 onClick={onClose}
                 className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full transition-colors"
@@ -95,7 +95,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onS
             </div>
 
             {/* Main content body */}
-            <div className="px-8 pb-8 pt-2">
+            <div className="px-8 pb-8 pt-2 flex-1 overflow-y-auto">
               {step === 'plans' && (
                 <div className="space-y-6">
                   {/* Grid or List of plans */}

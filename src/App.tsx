@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate, Routes, Route, Navigate } from 'react-router-dom';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
-import { Download, FileText, Layout, Eye, Settings2, Github, Award, Menu, X, LogOut, User as UserIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useReactToPrint } from 'react-to-print';
+import { Download, FileText, Layout, Eye, Settings2, Github, Award, Menu, X, LogOut, User as UserIcon, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import logo from './assets/logo.svg';
 import { ResumeEditor } from './components/ResumeEditor';
 import { ResumePreview } from './components/ResumePreview';
@@ -113,6 +112,9 @@ export default function App() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isAgreementModalOpen, setIsAgreementModalOpen] = useState(false);
   const [agreementInitialTab, setAgreementInitialTab] = useState<'service' | 'privacy'>('service');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
 
   const openAgreement = (tab: 'service' | 'privacy', e?: React.MouseEvent) => {
     if (e) e.preventDefault();
@@ -371,60 +373,36 @@ export default function App() {
 
   const componentRef = useRef<HTMLDivElement>(null);
 
-  const handleExportPDF = async () => {
-    const PAGE_WIDTH = 794;
-    const PAGE_HEIGHT = 1123;
-    const A4_WIDTH = 595.28;
-    const A4_HEIGHT = 841.89;
+  // PDF 导出：改用浏览器原生打印（输出矢量文字，手机/PC 均弹系统打印对话框可「另存为 PDF」，
+  // 彻底避开 html2canvas 截图方案的"照片感"/空白页/被拦截问题）
+  const handleExportPDF = useReactToPrint({
+    contentRef: componentRef,
+    documentTitle: `${data.personalInfo.fullName || 'Resume'}_简历`,
+    pageStyle: '@page { size: A4 portrait; margin: 0; }',
+    onBeforePrint: async () => { setExporting(true); setExportMessage(''); setExportError(null); },
+    onAfterPrint: () => setExporting(false),
+    onPrintError: () => { setExporting(false); setExportError('导出失败，请稍后重试'); },
+  });
 
-    const exportContainer = componentRef.current;
-    if (!exportContainer) return;
-
-    try {
-      // Clone the container to avoid disrupting visible UI
-      const clone = exportContainer.cloneNode(true) as HTMLElement;
-      clone.style.transform = 'none';
-      clone.style.transformOrigin = 'top left';
-      clone.style.width = `${PAGE_WIDTH}px`;
-      clone.style.position = 'absolute';
-      clone.style.top = '-9999px';
-      clone.style.left = '0';
-      document.body.appendChild(clone);
-
-      const pageElements = clone.querySelectorAll('.resume-print-page');
-      const pdf = new jsPDF('p', 'pt', 'a4');
-
-      for (let i = 0; i < pageElements.length; i++) {
-        const pageEl = pageElements[i] as HTMLElement;
-        // Clean visual styles for clean PDF capture
-        pageEl.style.borderRadius = '0';
-        pageEl.style.boxShadow = 'none';
-        pageEl.style.margin = '0';
-        pageEl.style.border = 'none';
-        // Hide print-only elements (page badges etc.)
-        pageEl.querySelectorAll('[class*="print:hidden"]').forEach((el) => {
-          (el as HTMLElement).style.display = 'none';
-        });
-
-        const canvas = await html2canvas(pageEl, {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: '#ffffff',
-          logging: false,
-        } as any);
-
-        const imgData = canvas.toDataURL('image/jpeg', 0.95);
-        if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, 0, A4_WIDTH, A4_HEIGHT);
-      }
-
-      document.body.removeChild(clone);
-
-      const name = data.personalInfo.fullName || 'Resume';
-      pdf.save(`${name.replace(/\s+/g, '_')}_简历.pdf`);
-    } catch (err) {
-      console.error('PDF export failed:', err);
+  // 打印前先确保预览节点已挂载：手机编辑态预览列 hidden 时 componentRef 为空，
+  // 先切到预览，等一帧再打印（沿用原「预览未就绪自动重试」逻辑）
+  const tryExportPDF = () => {
+    if (!componentRef.current) {
+      setExportError(null);
+      setExportMessage(null);
+      setExporting(true);
+      setActiveTab('preview');
+      setTimeout(() => {
+        if (componentRef.current) {
+          handleExportPDF();
+        } else {
+          setExporting(false);
+          setExportError('预览未就绪，请切换到预览页后重试');
+        }
+      }, 300);
+      return;
     }
+    handleExportPDF();
   };
 
   const handlePurchaseSuccess = async (planType: string) => {
@@ -439,7 +417,7 @@ export default function App() {
       } : prev);
       setIsExportModalOpen(false);
       setTimeout(() => {
-        handleExportPDF();
+        tryExportPDF();
       }, 500);
     } else {
       setAppUser(prev => prev ? {
@@ -754,33 +732,41 @@ export default function App() {
 
                 <button
                   onClick={() => {
+                    if (exporting) return;
                     if (!user) {
                       setIsAuthModalOpen(true);
                       return;
                     }
                     // 导出权限检查
                     if (appUser?.tier === 'member') {
-                      console.log('Member: exporting PDF...');
-                      handleExportPDF();
+                      tryExportPDF();
                     } else if ((appUser?.remainingPdfExports ?? 0) > 0) {
-                      console.log('Consuming export quota...');
                       const newQuota = (appUser?.remainingPdfExports ?? 0) - 1;
                       setAppUser(prev => prev ? { ...prev, remainingPdfExports: newQuota } : prev);
                       // 配额消耗持久化到 users 表，刷新后不丢失
                       void updateUser(user.uid, { remaining_pdf_exports: newQuota });
-                      handleExportPDF();
+                      tryExportPDF();
                     } else {
                       console.log('No export quota, showing purchase modal...');
                       setIsExportModalOpen(true);
                     }
                   }}
-                  className="flex items-center gap-2 px-4 py-2 sm:px-6 sm:py-3 bg-slate-900 text-white rounded-2xl text-xs sm:text-sm font-bold hover:scale-105 active:scale-95 transition-all shadow-xl shadow-slate-200"
+                  disabled={exporting}
+                  className="flex items-center gap-2 px-4 py-2 sm:px-6 sm:py-3 bg-slate-900 disabled:opacity-60 disabled:pointer-events-none text-white rounded-2xl text-xs sm:text-sm font-bold hover:scale-105 active:scale-95 transition-all shadow-xl shadow-slate-200"
                 >
-                  <Download className="w-4 h-4" />
-                  导出 PDF
+                  {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  {exporting ? '导出中...' : '导出 PDF'}
                 </button>
               </div>
             </header>
+            {(exportMessage || exportError) && (
+              <div className={cn(
+                "text-xs font-bold mt-1.5 text-center sm:text-right mr-2",
+                exportError ? "text-red-500" : "text-blue-600"
+              )}>
+                {exportError || exportMessage}
+              </div>
+            )}
             
             <div className="relative group">
               <div className="absolute -inset-2 bg-gradient-to-r from-macaron-pink/20 via-macaron-lavender/20 to-macaron-blue/20 rounded-[2.5rem] blur-2xl opacity-50 group-hover:opacity-100 transition duration-1000" />
@@ -819,9 +805,7 @@ export default function App() {
               onClick={() => navigate(PAGE_PATH.home)}
               className="flex items-center gap-2 group"
             >
-              <div className="bg-slate-900 p-1.5 rounded-2xl group-hover:scale-110 transition-transform">
-                <img src={logo} alt="壹页简历" className="w-7 h-7 rounded-lg" />
-              </div>
+              <img src={logo} alt="壹页简历" className="h-8 w-auto group-hover:scale-110 transition-transform" />
               <span className="text-2xl font-display font-extrabold tracking-tighter">
                 壹页简历
               </span>
@@ -1085,9 +1069,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
           <div className="md:col-span-2 space-y-6">
             <div className="flex items-center gap-2">
-              <div className="bg-slate-900 p-1.5 rounded-2xl">
-                <img src={logo} alt="壹页简历" className="w-7 h-7 rounded-lg" />
-              </div>
+              <img src={logo} alt="壹页简历" className="h-8 w-auto" />
               <span className="text-2xl font-display font-extrabold tracking-tighter">壹页简历</span>
             </div>
             <p className="text-slate-500 max-w-sm italic">

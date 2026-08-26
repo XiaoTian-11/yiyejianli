@@ -176,7 +176,7 @@ export const MarketingSalesTemplate: React.FC<TemplateProps> = ({ data }) => {
   return (
     <div className="flex flex-col min-h-[1100px] bg-white text-slate-800 px-12 py-10 space-y-6 font-sans border-t-8 border-orange-500 shadow-xl overflow-hidden print:shadow-none">
       {/* High impact header */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between border-b-2 border-orange-100 pb-5 gap-4">
+      <header className="flex flex-col @md:flex-row @md:items-center justify-between border-b-2 border-orange-100 pb-5 gap-4">
         <div>
           <ResumePhoto photo={data.personalInfo.photo} fullName={data.personalInfo.fullName} />
           <h1 className="text-3xl font-black tracking-tight text-slate-900 leading-tight">
@@ -188,7 +188,7 @@ export const MarketingSalesTemplate: React.FC<TemplateProps> = ({ data }) => {
         </div>
 
         {/* Contacts details with high contrast outline tags */}
-        <div className="flex flex-wrap md:flex-col items-start gap-x-4 gap-y-1.5 text-slate-500 text-[10px] font-bold">
+        <div className="flex flex-wrap @md:flex-col items-start gap-x-4 gap-y-1.5 text-slate-500 text-[10px] font-bold">
           <span className="flex items-center gap-1.5">
             <Mail className="w-3.5 h-3.5 text-orange-500" />
             {data.personalInfo.email}
@@ -202,7 +202,7 @@ export const MarketingSalesTemplate: React.FC<TemplateProps> = ({ data }) => {
             {getBilingualValue(data.personalInfo.location || '', data.personalInfo.location_secondary, mode)}
           </span>
           {data.personalInfo.website && (
-            <span className="flex items-center gap-1.5 col-span-2 md:col-span-1">
+            <span className="flex items-center gap-1.5 col-span-2 @md:col-span-1">
               <Globe className="w-3.5 h-3.5 text-orange-500" />
               {data.personalInfo.website}
             </span>

@@ -1,19 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ResumeData, TemplateId } from '../types';
-import { ModernTemplate } from '../templates/ModernTemplate';
-import { ClassicTemplate } from '../templates/ClassicTemplate';
-import { ExecutiveTemplate } from '../templates/ExecutiveTemplate';
-import { TechFocusedTemplate } from '../templates/TechFocusedTemplate';
-import { FinanceEliteTemplate } from '../templates/FinanceEliteTemplate';
-import { MedicalAcademicTemplate } from '../templates/MedicalAcademicTemplate';
-import { CreativeDesignerTemplate } from '../templates/CreativeDesignerTemplate';
-import { EngineeringTechTemplate } from '../templates/EngineeringTechTemplate';
-import { MinimalTemplate } from '../templates/MinimalTemplate';
-import { StudentTemplate } from '../templates/StudentTemplate';
-import { ElegantTemplate } from '../templates/ElegantTemplate';
-import { TwoColumnTemplate } from '../templates/TwoColumnTemplate';
-import { MarketingSalesTemplate } from '../templates/MarketingSalesTemplate';
-import { LegalConsultingTemplate } from '../templates/LegalConsultingTemplate';
+import { TemplateRenderer } from '../templates';
 import { motion } from 'motion/react';
 
 interface ResumePreviewProps {
@@ -30,41 +17,6 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps
 
     const PAGE_WIDTH = 794;   // Standard A4 width at 96 DPI
     const PAGE_HEIGHT = 1123;  // Standard A4 height at 96 DPI
-
-    const renderTemplate = () => {
-      switch (templateId) {
-        case 'modern':
-          return <ModernTemplate data={data} />;
-        case 'classic':
-          return <ClassicTemplate data={data} />;
-        case 'minimal':
-          return <MinimalTemplate data={data} />;
-        case 'executive':
-          return <ExecutiveTemplate data={data} />;
-        case 'tech_focused':
-          return <TechFocusedTemplate data={data} />;
-        case 'student':
-          return <StudentTemplate data={data} />;
-        case 'elegant':
-          return <ElegantTemplate data={data} />;
-        case 'two_column':
-          return <TwoColumnTemplate data={data} />;
-        case 'marketing_sales':
-          return <MarketingSalesTemplate data={data} />;
-        case 'legal_consulting':
-          return <LegalConsultingTemplate data={data} />;
-        case 'finance_elite':
-          return <FinanceEliteTemplate data={data} />;
-        case 'medical_academic':
-          return <MedicalAcademicTemplate data={data} />;
-        case 'creative_designer':
-          return <CreativeDesignerTemplate data={data} />;
-        case 'engineering_tech':
-          return <EngineeringTechTemplate data={data} />;
-        default:
-          return <ModernTemplate data={data} />;
-      }
-    };
 
     useEffect(() => {
       const measure = () => {
@@ -125,18 +77,19 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps
         className="w-full h-full overflow-y-auto bg-slate-100/60 py-8 px-4 flex flex-col items-center justify-start scrollbar-hide select-none"
       >
         {/* Hidden measurement container to estimate continuous printing heights */}
-        <div 
+        <div
           ref={measurerRef}
-          style={{ 
-            position: 'absolute', 
-            top: -9999, 
-            left: -9999, 
-            width: `${PAGE_WIDTH}px`, 
+          className="@container"
+          style={{
+            position: 'absolute',
+            top: -9999,
+            left: -9999,
+            width: `${PAGE_WIDTH}px`,
             visibility: 'hidden',
             pointerEvents: 'none'
           }}
         >
-          {renderTemplate()}
+          <TemplateRenderer templateId={templateId} data={data} />
         </div>
 
         {/* Paginated live sheet preview container linked to print actions */}
@@ -163,8 +116,9 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps
               }}
             >
               {/* Viewport content shifting to match pagination stripes */}
-              <div 
-                style={{ 
+              <div
+                className="@container"
+                style={{
                   transform: `translateY(${-pageIndex * PAGE_HEIGHT}px)`,
                   transformOrigin: 'top left',
                   width: `${PAGE_WIDTH}px`,
@@ -173,7 +127,7 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps
                   left: 0
                 }}
               >
-                {renderTemplate()}
+                <TemplateRenderer templateId={templateId} data={data} />
               </div>
 
               {/* Standard Page Number Badge */}

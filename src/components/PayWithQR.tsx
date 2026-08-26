@@ -208,7 +208,8 @@ export const PayWithQR: React.FC<PayWithQRProps> = ({ planType, userId, onSucces
         return;
       }
 
-      // 其他环境 → Native 扫码
+      // 其他环境（桌面 / 非微信手机浏览器）→ Native 扫码
+      // 个体户资质无法开通微信 H5 支付，故手机浏览器也统一退回扫码展示二维码
       const result = await createOrder({ userId, planType, paymentMethod: 'wechat' });
       setOrder(result);
     } catch (e: any) {
@@ -328,6 +329,11 @@ export const PayWithQR: React.FC<PayWithQRProps> = ({ planType, userId, onSucces
             </div>
             <p className="text-[10px] text-slate-400 mb-3 font-medium">
               请使用微信「扫一扫」完成支付
+              {!inWeChat && /Android|iPhone|Mobile/i.test(navigator.userAgent) && (
+                <span className="block mt-1 text-amber-600">
+                  {`手机浏览器也可能保存二维码后，用另一台设备的微信「扫一扫」识别支付`}
+                </span>
+              )}
             </p>
             {status === 'paid' && (
               <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="flex items-center gap-1.5 text-green-600 font-bold text-xs">

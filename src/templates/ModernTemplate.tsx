@@ -29,7 +29,7 @@ export const ModernTemplate: React.FC<ModernTemplateProps> = ({ data }) => {
             </h2>
             <SafeHTML 
               html={renderBilingualHTML(data.summary, data.summary_secondary, mode)} 
-              className="text-gray-600 leading-relaxed text-sm md:text-base whitespace-pre-line" 
+              className="text-gray-600 leading-relaxed text-sm @md:text-base whitespace-pre-line" 
             />
           </section>
         );
@@ -58,7 +58,7 @@ export const ModernTemplate: React.FC<ModernTemplateProps> = ({ data }) => {
                   </div>
                   <SafeHTML 
                     html={renderBilingualHTML(exp.description, exp.description_secondary, mode)} 
-                    className="text-gray-600 text-sm md:text-base leading-relaxed" 
+                    className="text-gray-600 text-sm @md:text-base leading-relaxed" 
                   />
                 </div>
               ))}
@@ -135,9 +135,9 @@ export const ModernTemplate: React.FC<ModernTemplateProps> = ({ data }) => {
   const skillsToRender = getBilingualSkills(data.skills, data.skills_secondary, mode);
 
   return (
-    <div className="flex flex-col md:flex-row min-h-[1100px] bg-white text-gray-800 shadow-xl overflow-hidden font-sans print:shadow-none">
+    <div className="flex flex-col @md:flex-row min-h-[1100px] bg-white text-gray-800 shadow-xl overflow-hidden font-sans print:shadow-none">
       {/* Sidebar */}
-      <aside className="w-full md:w-1/3 bg-slate-900 text-white p-8 space-y-8">
+      <aside className="w-full @md:w-1/3 bg-slate-900 text-white p-8 space-y-8">
         <div className="space-y-4">
           <ResumePhoto photo={data.personalInfo.photo} fullName={data.personalInfo.fullName} size="lg" />
           <h1 className="text-3xl font-bold tracking-tight leading-tight uppercase">

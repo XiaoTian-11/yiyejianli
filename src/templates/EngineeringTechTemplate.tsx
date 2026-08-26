@@ -179,7 +179,7 @@ export const EngineeringTechTemplate: React.FC<TemplateProps> = ({ data }) => {
     <div className="flex flex-col min-h-[1100px] bg-white text-slate-800 px-12 py-10 space-y-6 font-sans border-t-[10px] border-[#334155] shadow-xl overflow-hidden print:shadow-none">
       {/* Heavy Industrial Structured Header */}
       <header className="border-b-4 border-[#334155] pb-5 space-y-3">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="flex flex-col @md:flex-row @md:items-end justify-between gap-4">
           <div className="space-y-1">
             <ResumePhoto photo={data.personalInfo.photo} fullName={data.personalInfo.fullName} />
             <h1 className="text-3xl font-black text-slate-900 uppercase tracking-wide">
@@ -190,7 +190,7 @@ export const EngineeringTechTemplate: React.FC<TemplateProps> = ({ data }) => {
             </p>
           </div>
 
-          <div className="flex flex-col items-start md:items-end text-xs font-extrabold text-[#334155]/85 space-y-1 relative pr-1 border-l-4 md:border-l-0 md:border-r-4 border-[#334155] pl-3 md:pl-0 md:pr-4">
+          <div className="flex flex-col items-start @md:items-end text-xs font-extrabold text-[#334155]/85 space-y-1 relative pr-1 border-l-4 @md:border-l-0 @md:border-r-4 border-[#334155] pl-3 @md:pl-0 @md:pr-4">
             <span className="flex items-center gap-1.5 text-[11px]">
               <Mail className="w-3.5 h-3.5" />
               {data.personalInfo.email}

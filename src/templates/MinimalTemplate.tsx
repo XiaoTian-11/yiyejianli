@@ -19,11 +19,11 @@ export const MinimalTemplate: React.FC<TemplateProps> = ({ data }) => {
       case 'summary':
         if (!data.summary) return null;
         return (
-          <section key={section.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 border-b border-zinc-150 pb-4">
-            <div className="md:col-span-3 text-2xs font-bold tracking-widest text-[#52525b] uppercase">
+          <section key={section.id} className="grid grid-cols-1 @md:grid-cols-12 gap-2 border-b border-zinc-150 pb-4">
+            <div className="@md:col-span-3 text-2xs font-bold tracking-widest text-[#52525b] uppercase">
               {title}
             </div>
-            <div className="md:col-span-9">
+            <div className="@md:col-span-9">
               <SafeHTML 
                 html={renderBilingualHTML(data.summary, data.summary_secondary, mode)} 
                 className="text-xs text-zinc-650 leading-relaxed text-justify" 
@@ -34,11 +34,11 @@ export const MinimalTemplate: React.FC<TemplateProps> = ({ data }) => {
       case 'experience':
         if (data.experience.length === 0) return null;
         return (
-          <section key={section.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 border-b border-zinc-150 pb-4">
-            <div className="md:col-span-3 text-2xs font-bold tracking-widest text-[#52525b] uppercase">
+          <section key={section.id} className="grid grid-cols-1 @md:grid-cols-12 gap-2 border-b border-zinc-150 pb-4">
+            <div className="@md:col-span-3 text-2xs font-bold tracking-widest text-[#52525b] uppercase">
               {title}
             </div>
-            <div className="md:col-span-9 space-y-4">
+            <div className="@md:col-span-9 space-y-4">
               {data.experience.map((exp) => (
                 <div key={exp.id} className="space-y-1">
                   <div className="flex justify-between items-baseline">
@@ -64,11 +64,11 @@ export const MinimalTemplate: React.FC<TemplateProps> = ({ data }) => {
       case 'projects':
         if (data.projects.length === 0) return null;
         return (
-          <section key={section.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 border-b border-zinc-150 pb-4">
-            <div className="md:col-span-3 text-2xs font-bold tracking-widest text-[#52525b] uppercase">
+          <section key={section.id} className="grid grid-cols-1 @md:grid-cols-12 gap-2 border-b border-zinc-150 pb-4">
+            <div className="@md:col-span-3 text-2xs font-bold tracking-widest text-[#52525b] uppercase">
               {title}
             </div>
-            <div className="md:col-span-9 space-y-4">
+            <div className="@md:col-span-9 space-y-4">
               {data.projects.map((project) => (
                 <div key={project.id} className="space-y-1">
                   <div className="flex justify-between items-baseline">
@@ -100,11 +100,11 @@ export const MinimalTemplate: React.FC<TemplateProps> = ({ data }) => {
       case 'education':
         if (data.education.length === 0) return null;
         return (
-          <section key={section.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 border-b border-zinc-150 pb-4">
-            <div className="md:col-span-3 text-2xs font-bold tracking-widest text-[#52525b] uppercase">
+          <section key={section.id} className="grid grid-cols-1 @md:grid-cols-12 gap-2 border-b border-zinc-150 pb-4">
+            <div className="@md:col-span-3 text-2xs font-bold tracking-widest text-[#52525b] uppercase">
               {title}
             </div>
-            <div className="md:col-span-9 space-y-3">
+            <div className="@md:col-span-9 space-y-3">
               {data.education.map((edu) => (
                 <div key={edu.id} className="flex justify-between items-baseline">
                   <div>
@@ -127,11 +127,11 @@ export const MinimalTemplate: React.FC<TemplateProps> = ({ data }) => {
         if (data.skills.length === 0) return null;
         const skillsToRender = getBilingualSkills(data.skills, data.skills_secondary, mode);
         return (
-          <section key={section.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 border-b border-zinc-150 pb-4">
-            <div className="md:col-span-3 text-2xs font-bold tracking-widest text-[#52525b] uppercase">
+          <section key={section.id} className="grid grid-cols-1 @md:grid-cols-12 gap-2 border-b border-zinc-150 pb-4">
+            <div className="@md:col-span-3 text-2xs font-bold tracking-widest text-[#52525b] uppercase">
               {title}
             </div>
-            <div className="md:col-span-9 flex flex-wrap gap-1.5">
+            <div className="@md:col-span-9 flex flex-wrap gap-1.5">
               {skillsToRender.map((skill, index) => (
                 <span key={index} className="px-2 py-0.5 border border-zinc-250 text-zinc-700 rounded text-[10px] font-mono hover:bg-zinc-50 transition-colors">
                   {skill}
@@ -144,11 +144,11 @@ export const MinimalTemplate: React.FC<TemplateProps> = ({ data }) => {
         const custom = data.customSections?.find(cs => cs.id === section.customId);
         if (!custom || custom.items.length === 0) return null;
         return (
-          <section key={section.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 border-b border-zinc-150 pb-4">
-            <div className="md:col-span-3 text-2xs font-bold tracking-widest text-[#52525b] uppercase">
+          <section key={section.id} className="grid grid-cols-1 @md:grid-cols-12 gap-2 border-b border-zinc-150 pb-4">
+            <div className="@md:col-span-3 text-2xs font-bold tracking-widest text-[#52525b] uppercase">
               {title}
             </div>
-            <div className="md:col-span-9 space-y-3">
+            <div className="@md:col-span-9 space-y-3">
               {custom.items.map((item) => (
                 <div key={item.id} className="space-y-1">
                   <h3 className="font-bold text-xs text-zinc-800">

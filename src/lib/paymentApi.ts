@@ -24,6 +24,8 @@ export interface CreateOrderResult {
     signType: string;
     paySign: string;
   } | null;
+  /** H5 支付跳转地址（微信外手机浏览器点支付后跳转微信收银台用） */
+  h5Url?: string | null;
   expiresAt: string;
   provider: string;
 }
@@ -42,8 +44,9 @@ export async function createOrder(params: {
   userId?: string;
   planType: string;
   paymentMethod?: string;
-  channel?: 'native' | 'jsapi';
+  channel?: 'native' | 'jsapi' | 'h5';
   openid?: string;
+  payerClientIp?: string;
 }): Promise<CreateOrderResult> {
   const res = await fetch('/api/payment/create-order', {
     method: 'POST',

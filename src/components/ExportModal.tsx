@@ -56,10 +56,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-white rounded-[2rem] shadow-2xl z-[210] overflow-hidden border border-slate-100"
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg flex flex-col max-h-[92vh] bg-white rounded-[2rem] shadow-2xl z-[210] overflow-hidden border border-slate-100"
           >
-            {/* Header */}
-            <div className="relative p-5 pb-1">
+            {/* Header（固定，不随内容滚动） */}
+            <div className="relative p-5 pb-1 shrink-0">
               <button
                 onClick={onClose}
                 className="absolute top-4 right-4 p-1.5 hover:bg-slate-100 rounded-full transition-colors"
@@ -82,7 +82,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               </div>
             </div>
 
-            <div className="px-5 pb-5 pt-2">
+            <div className="px-5 pb-5 pt-2 flex-1 overflow-y-auto">
               {step === 'plans' && (
                 <div className="space-y-4">
                   {/* Dual Column Cards */}

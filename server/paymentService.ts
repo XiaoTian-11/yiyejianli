@@ -24,8 +24,8 @@ export interface OrderRecord {
 
 export type OrderStatus = OrderRecord['status'];
 
-/** 支付渠道：native=扫码（桌面）| jsapi=微信内直接调起 */
-export type PayChannel = 'native' | 'jsapi';
+/** 支付渠道：native=扫码（桌面）| jsapi=微信内直接调起 | h5=微信外手机浏览器跳转收银台 */
+export type PayChannel = 'native' | 'jsapi' | 'h5';
 
 /** JSAPI 调起参数（微信内 WeixinJSBridge 用） */
 export interface JsapiParams {
@@ -48,7 +48,9 @@ export interface OrderProvider {
     notifyUrl: string;
     channel?: PayChannel;
     openid?: string;
-  }): Promise<{ codeUrl: string; gatewayTradeNo?: string; jsapiParams?: JsapiParams }>;
+    /** H5 支付需要用户真实公网 IP（微信风控要求，不能是服务器/内网 IP） */
+    payerClientIp?: string;
+  }): Promise<{ codeUrl: string; gatewayTradeNo?: string; jsapiParams?: JsapiParams; h5Url?: string }>;
   /** 模拟模式专用：模拟用户扫码支付成功（真实网关无此方法） */
   markPaid?(orderId: string): Promise<void>;
 }
@@ -105,8 +107,8 @@ export function calcMemberUntil(planType: string, now: Date = new Date()): strin
 // ---------------------------------------------------------------------------
 export async function createOrder(
   deps: PaymentDeps,
-  params: { userId: string; planType: string; paymentMethod?: string; channel?: PayChannel; openid?: string }
-): Promise<{ order: OrderRecord; codeUrl: string; amountFen: number; jsapiParams?: JsapiParams }> {
+  params: { userId: string; planType: string; paymentMethod?: string; channel?: PayChannel; openid?: string; payerClientIp?: string }
+): Promise<{ order: OrderRecord; codeUrl: string; amountFen: number; jsapiParams?: JsapiParams; h5Url?: string }> {
   const { admin, provider } = deps;
   const now = deps.now ? deps.now() : new Date();
 
@@ -129,14 +131,15 @@ export async function createOrder(
     expires_at: calculateExpiresAt(now),
   };
 
-  // 调支付网关下单，拿扫码内容或 JSAPI 调起参数
-  const { codeUrl, gatewayTradeNo, jsapiParams } = await provider.createOrder({
+  // 调支付网关下单，拿扫码内容 / JSAPI 调起参数 / H5 跳转地址
+  const { codeUrl, gatewayTradeNo, jsapiParams, h5Url } = await provider.createOrder({
     orderId,
     description: `壹页简历-${plan.name}`,
     amountFen,
     notifyUrl: buildNotifyUrl(plan.type),
     channel: params.channel,
     openid: params.openid,
+    payerClientIp: params.payerClientIp,
   });
 
   if (gatewayTradeNo) order.gateway_trade_no = gatewayTradeNo;
@@ -144,7 +147,7 @@ export async function createOrder(
   const { error } = await admin.from('orders').insert(order);
   if (error) throw new PaymentError('DB_INSERT_ORDER', `写入订单失败: ${error.message}`);
 
-  return { order, codeUrl, amountFen, jsapiParams };
+  return { order, codeUrl, amountFen, jsapiParams, h5Url };
 }
 
 // ---------------------------------------------------------------------------

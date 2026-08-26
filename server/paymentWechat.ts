@@ -182,7 +182,7 @@ export const wechatProvider: OrderProvider = {
       return { codeUrl: '', gatewayTradeNo: undefined, jsapiParams: makeJsapiParams(cfg, data.prepay_id) };
     }
 
-    // 默认：Native 扫码支付（桌面/非微信浏览器）
+    // 默认：Native 扫码支付（桌面/非微信浏览器；个体户资质不支持 H5 支付，故非微信手机浏览器也退回扫码）
     const body = {
       appid: cfg.appid,
       mchid: cfg.mchid,

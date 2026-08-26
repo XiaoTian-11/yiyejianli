@@ -132,9 +132,9 @@ export const TwoColumnTemplate: React.FC<TemplateProps> = ({ data }) => {
   const rightSections = data.sections.filter(s => !leftSections.includes(s.type) && s.type !== 'personal');
 
   return (
-    <div className="flex flex-col md:flex-row min-h-[1100px] bg-white text-slate-800 font-sans border-t-8 border-indigo-900 shadow-xl overflow-hidden print:shadow-none">
+    <div className="flex flex-col @md:flex-row min-h-[1100px] bg-white text-slate-800 font-sans border-t-8 border-indigo-900 shadow-xl overflow-hidden print:shadow-none">
       {/* Left Column (35% sidebar) */}
-      <aside className="w-full md:w-[35%] bg-slate-50 p-6 flex flex-col gap-6 select-none border-r border-indigo-100/40 shrink-0">
+      <aside className="w-full @md:w-[35%] bg-slate-50 p-6 flex flex-col gap-6 select-none border-r border-indigo-100/40 shrink-0">
         <div>
           <ResumePhoto photo={data.personalInfo.photo} fullName={data.personalInfo.fullName} size="lg" />
           <h1 className="text-2xl font-black text-indigo-950 uppercase tracking-tight leading-tight">

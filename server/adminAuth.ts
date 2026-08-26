@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { createClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 import { getAdminClient } from './supabaseAdmin';
 
 // ============================================================================
@@ -22,7 +23,11 @@ function getAnonClient() {
   const url = process.env.VITE_SUPABASE_URL;
   const key = process.env.VITE_SUPABASE_ANON_KEY;
   if (!url || !key) return null;
-  anonClient = createClient(url, key, { auth: { persistSession: false } });
+  anonClient = createClient(url, key, {
+    auth: { persistSession: false },
+    // Node <22 无原生 WebSocket（服务器 Node 20），注入 ws 避免 RealtimeClient 抛错
+    realtime: { transport: WebSocket as any },
+  });
   return anonClient;
 }
 

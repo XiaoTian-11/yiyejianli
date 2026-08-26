@@ -130,9 +130,9 @@ export const MedicalAcademicTemplate: React.FC<TemplateProps> = ({ data }) => {
   const skillsToRender = getBilingualSkills(data.skills, data.skills_secondary, mode);
 
   return (
-    <div className="flex flex-col md:flex-row min-h-[1100px] bg-white text-slate-800 font-sans border-t-8 border-teal-700 shadow-xl overflow-hidden print:shadow-none">
+    <div className="flex flex-col @md:flex-row min-h-[1100px] bg-white text-slate-800 font-sans border-t-8 border-teal-700 shadow-xl overflow-hidden print:shadow-none">
       {/* Left Medical Accent Sidebar */}
-      <aside className="w-full md:w-[32%] bg-gradient-to-b from-[#f0fdf4] to-teal-50/20 p-8 flex flex-col gap-6 select-none border-r border-[#e6f4ea]">
+      <aside className="w-full @md:w-[32%] bg-gradient-to-b from-[#f0fdf4] to-teal-50/20 p-8 flex flex-col gap-6 select-none border-r border-[#e6f4ea]">
         <div className="space-y-3">
           <ResumePhoto photo={data.personalInfo.photo} fullName={data.personalInfo.fullName} size="md" />
           <div className="w-12 h-12 bg-teal-600 rounded-full flex items-center justify-center text-white shadow-md shadow-teal-700/10">

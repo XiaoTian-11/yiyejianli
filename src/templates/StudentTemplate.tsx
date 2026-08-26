@@ -187,7 +187,7 @@ export const StudentTemplate: React.FC<TemplateProps> = ({ data }) => {
   return (
     <div className="flex flex-col min-h-[1100px] bg-white text-slate-800 px-12 py-10 space-y-6 font-sans border-t-8 border-indigo-600 shadow-xl overflow-hidden print:shadow-none">
       {/* Student Chic Compact Header */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between border-b-2 border-slate-100 pb-4 gap-4">
+      <header className="flex flex-col @md:flex-row @md:items-center justify-between border-b-2 border-slate-100 pb-4 gap-4">
         <div className="flex items-center gap-3">
           <ResumePhoto photo={data.personalInfo.photo} fullName={data.personalInfo.fullName} size="md" />
           <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shrink-0">
@@ -204,7 +204,7 @@ export const StudentTemplate: React.FC<TemplateProps> = ({ data }) => {
         </div>
 
         {/* Dense contacts block */}
-        <div className="grid grid-cols-2 md:grid-cols-1 gap-x-4 gap-y-1 text-slate-500 text-[10px] font-bold">
+        <div className="grid grid-cols-2 @md:grid-cols-1 gap-x-4 gap-y-1 text-slate-500 text-[10px] font-bold">
           <span className="flex items-center gap-1">
             <Mail className="w-3.5 h-3.5 text-indigo-500" />
             {data.personalInfo.email}
@@ -218,7 +218,7 @@ export const StudentTemplate: React.FC<TemplateProps> = ({ data }) => {
             {getBilingualValue(data.personalInfo.location || '', data.personalInfo.location_secondary, mode)}
           </span>
           {data.personalInfo.website && (
-            <span className="flex items-center gap-1 col-span-2 md:col-span-1">
+            <span className="flex items-center gap-1 col-span-2 @md:col-span-1">
               <Globe className="w-3.5 h-3.5 text-indigo-500" />
               {data.personalInfo.website}
             </span>

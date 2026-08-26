@@ -43,8 +43,8 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-900 shadow-lg">
-            <img src={logo} alt="壹页简历" className="h-12 w-12 rounded-xl" />
+          <div className="flex h-16 w-16 items-center justify-center">
+            <img src={logo} alt="壹页简历" className="h-16 w-auto" />
           </div>
           <div className="text-center">
             <h1 className="text-xl font-bold">壹页简历 · 管理后台</h1>
