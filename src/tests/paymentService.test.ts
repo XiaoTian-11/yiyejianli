@@ -28,6 +28,7 @@ const mock = vi.hoisted(() => {
   const updateEq = vi.fn();
   const insert = vi.fn();
   const upsert = vi.fn();
+  const rpc = vi.fn();
   const from = vi.fn();
 
   from.mockImplementation((table: string) => {
@@ -44,7 +45,7 @@ const mock = vi.hoisted(() => {
     return chain;
   });
 
-  return { orderMaybeSingle, userMaybeSingle, updateEq, insert, upsert, from };
+  return { orderMaybeSingle, userMaybeSingle, updateEq, insert, upsert, rpc, from };
 });
 
 // ─── Mock provider ──────────────────────────────────────────────────────────
@@ -284,6 +285,30 @@ describe('paymentService', () => {
         expect.objectContaining({ id: 'u1', tier: 'free' }),
         expect.objectContaining({ onConflict: 'id' })
       );
+    });
+
+    it('读取用户失败时抛出 DB_READ_USER，不使用默认 free 记录覆盖权益', async () => {
+      mock.orderMaybeSingle.mockResolvedValue({ data: pendingOrder('single_export'), error: null });
+      mock.userMaybeSingle.mockResolvedValue({ data: null, error: { message: 'temporary users read failure' } });
+
+      await expect(completeOrder(makeDeps(), 'YJL20260602120000ABC123'))
+        .rejects.toThrow('读取用户失败');
+      expect(mock.upsert).not.toHaveBeenCalled();
+      expect(mock.updateEq).not.toHaveBeenCalled();
+    });
+
+
+    it('权益发放失败时订单保持未完成，不标记 completed（保证重试可补发）', async () => {
+      mock.orderMaybeSingle.mockResolvedValue({ data: pendingOrder('single_export'), error: null });
+      mock.userMaybeSingle.mockResolvedValue({ data: freeUserRow, error: null });
+      // users 表 upsert 失败 → 权益未发放
+      mock.upsert.mockResolvedValue({ error: { message: 'update users failed' } });
+
+      await expect(completeOrder(makeDeps(), 'YJL20260602120000ABC123'))
+        .rejects.toThrow('更新会员失败');
+
+      // 关键：绝不能先把订单标记 completed，否则后续微信重试会被幂等跳过
+      expect(mock.updateEq).not.toHaveBeenCalled();
     });
   });
 

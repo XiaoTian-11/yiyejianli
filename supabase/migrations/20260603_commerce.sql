@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS public.users (
   remaining_pdf_exports INTEGER NOT NULL DEFAULT 0,
   remaining_png_exports INTEGER NOT NULL DEFAULT 0,
   remaining_ats_checks INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+  is_admin BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

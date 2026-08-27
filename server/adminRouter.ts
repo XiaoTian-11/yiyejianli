@@ -279,14 +279,42 @@ router.patch('/users/:id', requireAdmin, async (req: Request, res: Response) => 
     if (updates.status !== undefined && !['active', 'disabled'].includes(String(updates.status))) {
       return res.status(400).json({ error: { code: 'VALIDATION', message: 'status 取值非法' } });
     }
-    if (updates.is_admin !== undefined) updates.is_admin = Boolean(updates.is_admin);
+    if (updates.is_admin !== undefined) {
+      const value = updates.is_admin;
+      if (value === true || value === false) {
+        updates.is_admin = value;
+      } else if (value === 'true' || value === '1' || value === 1) {
+        updates.is_admin = true;
+      } else if (value === 'false' || value === '0' || value === 0) {
+        updates.is_admin = false;
+      } else {
+        return res.status(400).json({ error: { code: 'VALIDATION', message: 'is_admin 必须为布尔值' } });
+      }
+    }
 
-    const { data, error } = await admin
+    let { data, error } = await admin
       .from('users')
       .update(updates)
       .eq('id', id)
       .select()
       .maybeSingle();
+
+    // 兼容尚未执行 admin 字段迁移的旧 users 表：status 不影响会员/配额更新。
+    if (error && /column .*status.* does not exist|Could not find the 'status' column/i.test(error.message || '')) {
+      const { status: _status, ...legacyUpdates } = updates;
+      if (Object.keys(legacyUpdates).length > 0) {
+        ({ data, error } = await admin
+          .from('users')
+          .update(legacyUpdates)
+          .eq('id', id)
+          .select()
+          .maybeSingle());
+      } else {
+        return res.status(409).json({
+          error: { code: 'MIGRATION_REQUIRED', message: '数据库尚未添加用户状态字段，请先执行 admin 用户字段迁移' },
+        });
+      }
+    }
 
     if (error) {
       return res.status(400).json({ error: { code: 'DB_UPDATE', message: `更新用户失败: ${error.message}` } });

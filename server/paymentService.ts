@@ -162,6 +162,27 @@ export async function completeOrder(
   const { admin } = deps;
   const now = deps.now ? deps.now() : new Date();
 
+  // 数据库 RPC 将订单锁、权益流水、用户权益和订单完成放进同一事务，
+  // 从根上避免重复回调并发发放，以及权益成功后订单更新失败导致的重复发放。
+  // 未执行迁移的旧环境暂时回退到下方兼容逻辑，便于平滑升级。
+  const rpc = (admin as any).rpc;
+  if (typeof rpc === 'function') {
+    const { data, error } = await rpc.call(admin, 'complete_payment_order', {
+      p_order_id: orderId,
+      p_gateway_trade_no: opts.gatewayTradeNo || null,
+    });
+    if (!error && data) {
+      return {
+        order: data.order as OrderRecord,
+        userUpdate: data.userUpdate as UserUpdateResult | null,
+        alreadyCompleted: Boolean(data.alreadyCompleted),
+      };
+    }
+    if (error && !/function .*complete_payment_order.* does not exist|Could not find the function/i.test(error.message || '')) {
+      throw new PaymentError('DB_COMPLETE_PAYMENT', `原子完成订单失败: ${error.message}`);
+    }
+  }
+
   const { data: order, error: fetchErr } = await admin
     .from('orders')
     .select('*')
@@ -180,6 +201,11 @@ export async function completeOrder(
   }
 
   const nextStatus: OrderStatus = 'completed';
+
+  // 先发放用户权益，成功后再标记订单 completed。
+  // 重要：此旧路径只能作为数据库 RPC 不可用时的兼容回退；RPC 负责真正的事务与幂等。
+  const userUpdate = await applyPlanToUser(deps, order.user_id, order.plan_type, now);
+
   const { error: updErr } = await admin
     .from('orders')
     .update({
@@ -191,9 +217,6 @@ export async function completeOrder(
     .eq('id', orderId);
 
   if (updErr) throw new PaymentError('DB_UPDATE_ORDER', `更新订单失败: ${updErr.message}`);
-
-  // 根据方案更新 users 表
-  const userUpdate = await applyPlanToUser(deps, order.user_id, order.plan_type, now);
 
   return { order: { ...(order as OrderRecord), status: nextStatus, completed_at: now.toISOString() }, userUpdate, alreadyCompleted: false };
 }
@@ -213,11 +236,16 @@ async function applyPlanToUser(
   const { admin } = deps;
 
   // 读当前用户记录（不存在则建默认 free）
-  const { data: user } = await admin
+  const { data: user, error: userFetchErr } = await admin
     .from('users')
     .select('*')
     .eq('id', userId)
     .maybeSingle();
+
+  if (userFetchErr) {
+    // 读取失败不能误判为用户不存在，否则 upsert 默认 free 行会覆盖会员权益。
+    throw new PaymentError('DB_READ_USER', `读取用户失败: ${userFetchErr.message}`);
+  }
 
   let row;
   if (user) {
