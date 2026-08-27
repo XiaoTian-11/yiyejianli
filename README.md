@@ -8,6 +8,8 @@
 
 在线体验: https://zhijianli.ai
 
+完整部署说明：请阅读 [docs/壹页简历部署手册.md](docs/壹页简历部署手册.md)。
+
 ## Run Locally
 
 **Prerequisites:**  Node.js
