@@ -68,6 +68,8 @@ const expectedUser: User = {
   remainingPdfExports: 0,
   remainingPngExports: 0,
   remainingAtsChecks: 0,
+  invitedCount: 0,
+  referralBonusCount: 0,
 };
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
