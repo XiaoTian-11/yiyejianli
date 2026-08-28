@@ -21,6 +21,9 @@ export interface AdminUserRow {
   is_admin: boolean | null;
   status: string | null;
   created_at: string | null;
+  invite_code?: string | null;
+  invited_count?: number;
+  referral_bonus_count?: number;
 }
 
 export type OrderStatus =

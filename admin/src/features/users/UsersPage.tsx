@@ -94,6 +94,22 @@ export function UsersPage() {
         cell: ({ row }) => formatDateTime(row.original.member_until),
       },
       {
+        accessorKey: 'invite_code',
+        header: '邀请码',
+        cell: ({ row }) => (
+          <span className="font-mono text-xs">{row.original.invite_code || '—'}</span>
+        ),
+      },
+      {
+        accessorKey: 'referral',
+        header: '邀请',
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground">
+            {row.original.invited_count ?? 0} 人 / 奖励 {row.original.referral_bonus_count ?? 0}
+          </span>
+        ),
+      },
+      {
         accessorKey: 'remaining_pdf_exports',
         header: 'PDF 剩余',
         cell: ({ row }) => row.original.remaining_pdf_exports,
