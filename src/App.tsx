@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate, Routes, Route, Navigate } from 'react-router-dom';
-import { useReactToPrint } from 'react-to-print';
 import { Download, FileText, Layout, Eye, Settings2, Github, Award, Menu, X, LogOut, User as UserIcon, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { generateResumePDF, downloadBlob } from './lib/pdfExport';
 import logo from './assets/logo.svg';
 import { ResumeEditor } from './components/ResumeEditor';
 import { ResumePreview } from './components/ResumePreview';
@@ -535,40 +535,54 @@ export default function App() {
 
   const componentRef = useRef<HTMLDivElement>(null);
 
-  // PDF 导出：改用浏览器原生打印（输出矢量文字，手机/PC 均弹系统打印对话框可「另存为 PDF」，
-  // 彻底避开 html2canvas 截图方案的"照片感"/空白页/被拦截问题）
-  const handleExportPDF = useReactToPrint({
-    contentRef: componentRef,
-    documentTitle: `${data.personalInfo.fullName || 'Resume'}_简历`,
-    pageStyle: '@page { size: A4 portrait; margin: 0; }',
-    onBeforePrint: async () => { setExporting(true); setExportMessage(''); setExportError(null); },
-    onAfterPrint: () => setExporting(false),
-    onPrintError: () => { setExporting(false); setExportError('导出失败，请稍后重试'); },
-  });
+  // PDF 导出：前端截图生成 PDF 文件直接下载（html-to-image + jspdf）。
+  // 不依赖浏览器打印对话框 → 微信内置浏览器也能直接下载/打开 PDF，
+  // 且不受「切换纸张大小」影响（固定 A4）。
+  const generateAndDownloadPDF = async (): Promise<void> => {
+    setExporting(true);
+    setExportMessage('');
+    setExportError(null);
+    try {
+      // 收集所有简历页节点（ResumePreview 的多页 .resume-print-page）
+      const pageEls = Array.from(document.querySelectorAll<HTMLElement>('.resume-print-page'));
+      if (pageEls.length === 0) {
+        setExportError('预览未就绪，请切换到预览页后重试');
+        setExporting(false);
+        return;
+      }
+      const { blob } = await generateResumePDF(pageEls);
+      const name = (data.personalInfo.fullName || 'Resume').trim() || 'Resume';
+      downloadBlob(blob, `${name}_简历.pdf`);
+      setExportMessage('PDF 已生成，请查看下载');
+    } catch (err) {
+      console.error('导出 PDF 失败:', err);
+      setExportError('导出失败，请稍后重试');
+    } finally {
+      setExporting(false);
+    }
+  };
 
-  // 打印前先确保预览节点已挂载：手机编辑态预览列 hidden 时 componentRef 为空，
-  // 先切到预览，等一帧再打印（沿用原「预览未就绪自动重试」逻辑）
+  // 导出前先确保预览节点已挂载：手机编辑态预览列 hidden 时 .resume-print-page 不存在，
+  // 先切到预览，等一帧再导出（沿用原「预览未就绪自动重试」逻辑）
   const tryExportPDF = () => {
-    if (!componentRef.current) {
+    if (!document.querySelector('.resume-print-page')) {
       setExportError(null);
       setExportMessage(null);
-      setExporting(true);
       setActiveTab('preview');
       setTimeout(() => {
-        if (componentRef.current) {
-          handleExportPDF();
+        if (document.querySelector('.resume-print-page')) {
+          void generateAndDownloadPDF();
         } else {
-          setExporting(false);
           setExportError('预览未就绪，请切换到预览页后重试');
         }
       }, 300);
       return;
     }
-    handleExportPDF();
+    void generateAndDownloadPDF();
   };
 
-  // 扣 1 次导出配额并触发打印。仅在用户于确认弹窗点「继续导出」或支付成功后自动导出时调用。
-  // 打印框取消不退回：react-to-print 的 onAfterPrint 在成功/取消时都会触发，无法区分。
+  // 扣 1 次导出配额并触发导出。仅在用户于确认弹窗点「继续导出」或支付成功后自动导出时调用。
+  // 注意：截图生成 PDF 是可感知完成的操作，若失败不扣（成功才扣，公平且避免资损）。
   const consumeQuotaAndExport = () => {
     const newQuota = (appUser?.remainingPdfExports ?? 0) - 1;
     setAppUser(prev => prev ? { ...prev, remainingPdfExports: newQuota } : prev);
