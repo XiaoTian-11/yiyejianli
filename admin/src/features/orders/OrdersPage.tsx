@@ -6,7 +6,7 @@ import {
   useReactTable,
   type ColumnDef,
 } from '@tanstack/react-table';
-import { Search, RefreshCw, Eye, Loader2, ShoppingCart } from 'lucide-react';
+import { Search, RefreshCw, Eye, Loader2, ShoppingCart, RotateCcw } from 'lucide-react';
 import { api, type PageResult } from '@/lib/api';
 import { PageHeader } from '@/features/shared/PageHeader';
 import { DataTablePagination } from '@/features/shared/DataTablePagination';
@@ -29,14 +29,17 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn, formatAmount, formatDateTime } from '@/lib/utils';
-import type { AdminOrderRow, OrderStatus } from '@/types';
+import type { AdminOrderRow, OrderStatus, RefundStatus } from '@/types';
 import {
   ORDER_STATUS_TEXT,
   ORDER_STATUS_BADGE,
+  ORDER_REFUND_STATUS_TEXT,
+  ORDER_REFUND_STATUS_BADGE,
   PAYMENT_METHOD_TEXT,
   PLAN_TYPE_TEXT,
 } from '@/types';
 import { OrderDetailDrawer } from './OrderDetailDrawer';
+import { RefundDialog } from './RefundDialog';
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'all', label: '全部状态' },
@@ -60,6 +63,7 @@ export function OrdersPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [detailOrder, setDetailOrder] = useState<AdminOrderRow | null>(null);
+  const [refundOrder, setRefundOrder] = useState<AdminOrderRow | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
@@ -106,7 +110,19 @@ export function OrdersPage() {
       {
         accessorKey: 'amount',
         header: '金额',
-        cell: ({ row }) => <span className="font-medium">{formatAmount(row.original.amount)}</span>,
+        cell: ({ row }) => {
+          const refunded = Number(row.original.refund_amount) || 0;
+          return (
+            <div className="flex items-center gap-1.5">
+              <span className={cn('font-medium', refunded > 0 && 'text-muted-foreground line-through decoration-destructive/60')}>
+                {formatAmount(row.original.amount)}
+              </span>
+              {refunded > 0 && (
+                <span className="text-xs font-medium text-destructive">-{formatAmount(refunded)}</span>
+              )}
+            </div>
+          );
+        },
       },
       {
         accessorKey: 'payment_method',
@@ -117,9 +133,16 @@ export function OrdersPage() {
         accessorKey: 'status',
         header: '状态',
         cell: ({ row }) => (
-          <Badge variant={ORDER_STATUS_BADGE[row.original.status as OrderStatus]}>
-            {ORDER_STATUS_TEXT[row.original.status as OrderStatus] || row.original.status}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-1">
+            <Badge variant={ORDER_STATUS_BADGE[row.original.status as OrderStatus]}>
+              {ORDER_STATUS_TEXT[row.original.status as OrderStatus] || row.original.status}
+            </Badge>
+            {row.original.refund_status && (
+              <Badge variant={ORDER_REFUND_STATUS_BADGE[row.original.refund_status as RefundStatus]}>
+                {ORDER_REFUND_STATUS_TEXT[row.original.refund_status as RefundStatus]}
+              </Badge>
+            )}
+          </div>
         ),
       },
       {
@@ -130,16 +153,32 @@ export function OrdersPage() {
       {
         id: 'actions',
         header: '操作',
-        cell: ({ row }) => (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 text-xs"
-            onClick={() => setDetailOrder(row.original)}
-          >
-            <Eye className="h-3.5 w-3.5" /> 详情
-          </Button>
-        ),
+        cell: ({ row }) => {
+          const o = row.original;
+          const canRefund = o.status === 'completed' && o.refund_status !== 'full';
+          return (
+            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 text-xs"
+                onClick={() => setDetailOrder(o)}
+              >
+                <Eye className="h-3.5 w-3.5" /> 详情
+              </Button>
+              {canRefund && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => setRefundOrder(o)}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> 退款
+                </Button>
+              )}
+            </div>
+          );
+        },
       },
     ],
     []
@@ -265,6 +304,12 @@ export function OrdersPage() {
       <OrderDetailDrawer
         order={detailOrder}
         onClose={() => setDetailOrder(null)}
+      />
+
+      <RefundDialog
+        order={refundOrder}
+        onClose={() => setRefundOrder(null)}
+        onSuccess={() => query.refetch()}
       />
     </div>
   );

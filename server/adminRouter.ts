@@ -2,6 +2,9 @@ import { Router, type Request, type Response } from 'express';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { requireAdmin } from './adminAuth';
 import { getAdminClient } from './supabaseAdmin';
+import { refundOrder, mapRefundStatus, PaymentError } from './paymentService';
+import { getPaymentProvider } from './paymentProvider';
+import { queryWechatRefund } from './paymentWechat';
 
 // ============================================================================
 // Admin 管理接口（/api/admin/*）
@@ -71,12 +74,15 @@ router.get('/stats/overview', requireAdmin, async (req: Request, res: Response) 
         admin.from('resumes').select('id', { count: 'exact', head: true }),
       ]);
 
-    // GMV：成交订单金额合计
+    // GMV：成交订单金额合计 − 退款（净收入口径）
     const { data: completedOrdersData } = await admin
       .from('orders')
-      .select('amount')
+      .select('amount, refund_amount')
       .eq('status', 'completed');
-    const gmv = (completedOrdersData || []).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+    const gmv = (completedOrdersData || []).reduce(
+      (s, o) => s + (Number(o.amount) || 0) - (Number(o.refund_amount) || 0),
+      0
+    );
 
     // 今日新增用户（created_at 列可能不存在，容错为 0）
     let newUsersToday = 0;
@@ -400,6 +406,93 @@ router.get('/orders/:id', requireAdmin, async (req: Request, res: Response) => {
     res.json({ ...order, user_email: emailMap.get(order.user_id) || null, plan_name: planName(order.plan_type) });
   } catch (err) {
     handleError(res, err);
+  }
+});
+
+// ── 订单退款（管理后台专用）────────────────────────────────────────────────
+
+/** 统一把 PaymentError 转成 400 业务错误响应 */
+function refundError(res: Response, err: unknown) {
+  if (err instanceof PaymentError) {
+    return res.status(400).json({ error: { code: err.code, message: err.message } });
+  }
+  console.error('[admin] refund error:', err);
+  if (!res.headersSent) {
+    return res.status(500).json({ error: { code: 'INTERNAL', message: (err as Error)?.message || '服务器内部错误' } });
+  }
+}
+
+/** POST /orders/:id/refund — 发起退款 body: { amount, reason? } */
+router.post('/orders/:id/refund', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const admin = getAdminClient();
+    const provider = getPaymentProvider();
+    const amount = Number(req.body?.amount);
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 200) : undefined;
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ error: { code: 'VALIDATION', message: '退款金额必须大于 0' } });
+    }
+    const operatorId = (req as Request & { adminUser?: { id?: string } }).adminUser?.id;
+    const result = await refundOrder({ admin, provider }, req.params.id, { amount, reason, operatorId });
+    res.json(result);
+  } catch (err) {
+    refundError(res, err);
+  }
+});
+
+/** GET /orders/:id/refunds — 订单退款流水列表 */
+router.get('/orders/:id/refunds', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const admin = getAdminClient();
+    const { data, error } = await admin
+      .from('refunds')
+      .select('*')
+      .eq('order_id', req.params.id)
+      .order('created_at', { ascending: false });
+    if (error) {
+      // 未执行退款迁移的旧库：refunds 表不存在，按空列表处理（前端不展示流水区）
+      if (/does not exist|relation .*refunds.*|Could not find the table/i.test(error.message || '')) {
+        return res.json({ items: [] });
+      }
+      return res.status(400).json({ error: { code: 'DB_READ', message: `查询退款流水失败: ${error.message}` } });
+    }
+    const emailMap = await attachUserEmails(admin, (data || []).map((r) => ({ user_id: r.operator_id })));
+    const items = (data || []).map((r) => ({
+      ...r,
+      operator_email: emailMap.get(r.operator_id) || null,
+    }));
+    res.json({ items });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+/** POST /orders/:id/refunds/:refundNo/sync — 主动查网关退款状态并更新本地（兜底回调丢失） */
+router.post('/orders/:id/refunds/:refundNo/sync', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const admin = getAdminClient();
+    const refundNo = req.params.refundNo;
+    if (getPaymentProvider().name !== 'wechat') {
+      // mock 模式：本地退款即时成功，无需同步
+      return res.json({ synced: false, message: 'mock 模式无需同步' });
+    }
+    const gateway = await queryWechatRefund(refundNo);
+    const status = mapRefundStatus(gateway.status);
+    const { data, error } = await admin
+      .from('refunds')
+      .update({ status, wechat_refund_id: (gateway as any).refund_id || null, updated_at: new Date().toISOString() })
+      .eq('refund_no', refundNo)
+      .select()
+      .maybeSingle();
+    if (error) {
+      return res.status(400).json({ error: { code: 'DB_UPDATE', message: `更新退款状态失败: ${error.message}` } });
+    }
+    if (!data) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: '退款单不存在' } });
+    }
+    res.json({ synced: true, refund: data, gatewayStatus: gateway.status });
+  } catch (err) {
+    refundError(res, err);
   }
 });
 

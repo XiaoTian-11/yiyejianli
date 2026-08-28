@@ -292,6 +292,51 @@ Rules: (1) Return same-keys JSON only. (2) Use professional CV language, preserv
     }
   });
 
+  // POST /api/payment/notify/refund-wechat — 微信退款结果回调（真实模式）
+  // 权益已在发起退款（commit_refund）时回收，此处仅同步最终退款状态。
+  app.post("/api/payment/notify/refund-wechat", async (req: express.Request, res: express.Response) => {
+    try {
+      if (getPaymentProvider().name !== "wechat") {
+        return res.status(404).json({ code: "FAIL", message: "NOT_FOUND" });
+      }
+      const cfg = loadWechatConfig();
+      const rawBody = (req as any).rawBody || JSON.stringify(req.body);
+      verifyNotifySignature(cfg, req.headers as Record<string, string | undefined>, rawBody);
+
+      const payload = JSON.parse(rawBody);
+      const plain = decryptResource(cfg.apiV3Key, payload.resource);
+      const event = JSON.parse(plain);
+      const { out_refund_no, refund_status } = event;
+      if (!out_refund_no) {
+        return res.json({ code: "SUCCESS", message: "ok" });
+      }
+      const statusMap: Record<string, 'success' | 'processing' | 'failed' | 'abnormal'> = {
+        SUCCESS: "success",
+        PROCESSING: "processing",
+        ABNORMAL: "abnormal",
+        CLOSED: "failed",
+      };
+      const local = statusMap[refund_status] || "processing";
+      const admin = getAdminClient();
+      const { error } = await admin
+        .from("refunds")
+        .update({
+          status: local,
+          wechat_refund_id: event.refund_id || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("refund_no", out_refund_no);
+      if (error) {
+        console.error("Refund notify DB error:", error.message);
+        return res.status(500).json({ code: "FAIL", message: error.message });
+      }
+      res.json({ code: "SUCCESS", message: "成功" });
+    } catch (err) {
+      console.error("Refund notify error:", err);
+      res.status(500).json({ code: "FAIL", message: (err as Error).message });
+    }
+  });
+
   // ==========================================================================
   // 中后台管理 API（/api/admin/*）— 全部经 requireAdmin 鉴权
   // ==========================================================================

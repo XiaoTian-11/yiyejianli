@@ -159,6 +159,48 @@ export async function getOpenidByCode(code: string): Promise<{ openid: string; s
   return { openid: data.openid, scope: data.scope };
 }
 
+/** 退款结果（微信 /v3/refund/domestic/refunds 响应的关键字段） */
+export interface WechatRefundResult {
+  refund_id?: string;
+  out_refund_no: string;
+  out_trade_no: string;
+  /** 退款状态：SUCCESS=成功 CLOSED=关闭 PROCESSING=处理中 ABNORMAL=异常 */
+  status?: 'SUCCESS' | 'CLOSED' | 'PROCESSING' | 'ABNORMAL';
+  refund_amount?: number;
+  [key: string]: unknown;
+}
+
+/**
+ * 发起退款（APIv3）。outRefundNo 是幂等键：同单号重复请求微信返回同一退款单。
+ * 文档：https://pay.weixin.qq.com/doc/v3/merchant/4012791881（退款）
+ */
+export async function wechatRefund(input: {
+  outTradeNo: string;
+  outRefundNo: string;
+  /** 退款金额（分），必须 ≤ 原支付金额 */
+  refundFen: number;
+  /** 原订单金额（分） */
+  totalFen: number;
+  reason?: string;
+  /** 退款结果回调地址（POST，成功后状态变更会通知） */
+  notifyUrl?: string;
+}): Promise<WechatRefundResult> {
+  const cfg = loadWechatConfig();
+  const body: Record<string, unknown> = {
+    out_trade_no: input.outTradeNo,
+    out_refund_no: input.outRefundNo,
+    amount: { refund: input.refundFen, total: input.totalFen, currency: 'CNY' },
+  };
+  if (input.reason) body.reason = input.reason.slice(0, 80);
+  if (input.notifyUrl) body.notify_url = input.notifyUrl;
+  return await requestWechat('POST', '/v3/refund/domestic/refunds', body) as WechatRefundResult;
+}
+
+/** 查询退款单状态（out_refund_no 商户退款单号），兜底回调丢失 */
+export async function queryWechatRefund(outRefundNo: string): Promise<WechatRefundResult> {
+  return await requestWechat('GET', `/v3/refund/domestic/refunds/${encodeURIComponent(outRefundNo)}`, null) as WechatRefundResult;
+}
+
 export const wechatProvider: OrderProvider = {
   name: 'wechat',
 
@@ -194,5 +236,9 @@ export const wechatProvider: OrderProvider = {
     const data = await requestWechat('POST', '/v3/pay/transactions/native', body);
     if (!data.code_url) throw new Error(`微信下单未返回 code_url: ${JSON.stringify(data)}`);
     return { codeUrl: data.code_url };
+  },
+
+  async refundOrder(input) {
+    return await wechatRefund(input);
   },
 };

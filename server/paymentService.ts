@@ -20,6 +20,11 @@ export interface OrderRecord {
   paid_at?: string;
   expires_at: string;
   completed_at?: string;
+  // 退款相关（20260828_refund.sql 迁移后存在；未迁移环境 undefined）
+  refund_amount?: number;    // 累计已退（元）
+  refund_status?: 'partial' | 'full' | null;
+  refunded_at?: string | null;
+  refunded_by?: string | null;
 }
 
 export type OrderStatus = OrderRecord['status'];
@@ -35,6 +40,23 @@ export interface JsapiParams {
   package: string; // prepay_id=xxx
   signType: string;
   paySign: string;
+}
+
+/** 退款发起输入（金额单位：元） */
+export interface RefundInput {
+  outTradeNo: string;
+  outRefundNo: string;
+  refundFen: number;
+  totalFen: number;
+  reason?: string;
+  notifyUrl?: string;
+}
+
+export interface RefundResult {
+  /** 网关退款状态：SUCCESS | PROCESSING | CLOSED | ABNORMAL */
+  status?: string;
+  wechatRefundId?: string;
+  [key: string]: unknown;
 }
 
 /** 支付网关 provider 抽象 */
@@ -53,6 +75,8 @@ export interface OrderProvider {
   }): Promise<{ codeUrl: string; gatewayTradeNo?: string; jsapiParams?: JsapiParams; h5Url?: string }>;
   /** 模拟模式专用：模拟用户扫码支付成功（真实网关无此方法） */
   markPaid?(orderId: string): Promise<void>;
+  /** 发起退款（真实模式走网关 API；mock 模式直接成功） */
+  refundOrder?(input: RefundInput): Promise<RefundResult>;
 }
 
 export class PaymentError extends Error {
@@ -305,4 +329,146 @@ export function buildNotifyUrl(_planType?: string): string {
   const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
   if (appUrl) return `${appUrl}/api/payment/notify/wechat`;
   return 'https://your-domain.com/api/payment/notify/wechat';
+}
+
+// ---------------------------------------------------------------------------
+// 退款（管理后台发起：金额自定义，首笔退款即收回该订单全部权益）
+// 幂等键 refund_no；权益回收由 DB RPC commit_refund 在单事务内完成。
+// ---------------------------------------------------------------------------
+export function generateRefundNo(now: Date = new Date()): string {
+  const ts = now.toISOString().replace(/[-:T]/g, '').slice(0, 14); // 14 位
+  const rand = Math.random().toString(36).slice(2, 8).toUpperCase(); // 6 位
+  return `RF${ts}${rand}`; // 与订单号同风格，22 字符
+}
+
+/** 微信退款单状态 → 本地 refunds.status */
+export function mapRefundStatus(gatewayStatus: string | undefined): 'success' | 'processing' | 'failed' | 'abnormal' {
+  switch (gatewayStatus) {
+    case 'SUCCESS': return 'success';
+    case 'PROCESSING': return 'processing';
+    case 'ABNORMAL': return 'abnormal';
+    case 'CLOSED': return 'failed';
+    default: return 'processing';
+  }
+}
+
+export interface RefundOrderResult {
+  order: OrderRecord;
+  user: UserUpdateResult | null;
+  refund: { refundNo: string; amount: number; status: string; alreadyRefunded: boolean };
+}
+
+/**
+ * 管理后台退款编排：
+ * 1. 校验订单可退（completed、累计未退满、金额合法）
+ * 2. 调网关退款（受理即视为成功；失败落 failed 流水留痕）
+ * 3. 调 commit_refund RPC 原子落库（流水 + 订单状态 + 首笔权益回收）
+ */
+export async function refundOrder(
+  deps: PaymentDeps,
+  orderId: string,
+  params: { amount: number; reason?: string; operatorId?: string }
+): Promise<RefundOrderResult> {
+  const { admin, provider } = deps;
+  const now = deps.now ? deps.now() : new Date();
+
+  const order = await queryOrder(deps, orderId);
+  if (!order) throw new PaymentError('ORDER_NOT_FOUND', `订单不存在: ${orderId}`);
+  if (order.status !== 'completed') {
+    throw new PaymentError('REFUND_NOT_ALLOWED', `仅已完成的订单可退款（当前状态: ${order.status}）`);
+  }
+  const refundedSoFar = Number(order.refund_amount || 0);
+  const refundable = Number(order.amount) - refundedSoFar;
+  if (refundable <= 0) throw new PaymentError('REFUND_NOT_ALLOWED', '该订单已全额退款');
+  const amount = Math.round(Number(params.amount) * 100) / 100;
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new PaymentError('REFUND_INVALID_AMOUNT', '退款金额必须大于 0');
+  }
+  if (amount > refundable + 0.001) {
+    throw new PaymentError('REFUND_EXCEEDS_ORDER', `退款金额超过可退余额 ${refundable.toFixed(2)} 元`);
+  }
+
+  const refundNo = generateRefundNo(now);
+  const totalFen = toFen(Number(order.amount));
+  const refundFen = toFen(amount);
+
+  if (typeof provider.refundOrder !== 'function') {
+    throw new PaymentError('REFUND_UNSUPPORTED', '当前支付模式不支持退款');
+  }
+
+  let gatewayResult: RefundResult;
+  try {
+    gatewayResult = await provider.refundOrder({
+      outTradeNo: order.id,
+      outRefundNo: refundNo,
+      refundFen,
+      totalFen,
+      reason: params.reason,
+      notifyUrl: buildRefundNotifyUrl(),
+    });
+  } catch (err) {
+    // 网关受理失败：落 failed 流水留痕（不影响订单状态），再抛业务错误
+    await admin.from('refunds').insert({
+      order_id: order.id,
+      refund_no: refundNo,
+      amount,
+      status: 'failed',
+      reason: params.reason || null,
+      operator_id: params.operatorId || null,
+    }).then(({ error }) => {
+      if (error) console.error('[refund] failed 流水写入失败:', error.message);
+    });
+    throw new PaymentError('REFUND_GATEWAY_ERROR', `退款网关请求失败: ${(err as Error).message}`);
+  }
+
+  // 网关状态映射（受理中 PROCESSING 也先落库回收权益；ABNORMAL/CLOSED 由回调/查单纠正）
+  const localStatus = mapRefundStatus(gatewayResult.status);
+  if (localStatus === 'failed' || localStatus === 'abnormal') {
+    await admin.from('refunds').insert({
+      order_id: order.id,
+      refund_no: refundNo,
+      amount,
+      status: localStatus,
+      reason: params.reason || null,
+      wechat_refund_id: gatewayResult.wechatRefundId || null,
+      operator_id: params.operatorId || null,
+    }).then(({ error }) => {
+      if (error) console.error('[refund] 异常态流水写入失败:', error.message);
+    });
+    throw new PaymentError('REFUND_GATEWAY_ERROR', `退款网关返回异常状态: ${gatewayResult.status}`);
+  }
+
+  // 原子落库：流水 + 订单退款状态 + 首笔权益回收
+  const rpc = (admin as any).rpc;
+  if (typeof rpc === 'function') {
+    const { data, error } = await rpc.call(admin, 'commit_refund', {
+      p_order_id: orderId,
+      p_refund_no: refundNo,
+      p_amount: amount,
+      p_wechat_refund_id: gatewayResult.wechatRefundId || null,
+      p_operator_id: params.operatorId || null,
+      p_reason: params.reason || null,
+    });
+    if (!error && data) {
+      return {
+        order: data.order as OrderRecord,
+        user: (data.user as UserUpdateResult) || null,
+        refund: { refundNo, amount, status: localStatus, alreadyRefunded: Boolean(data.alreadyRefunded) },
+      };
+    }
+    if (error && !/function .*commit_refund.* does not exist|Could not find the function/i.test(error.message || '')) {
+      throw new PaymentError('DB_COMMIT_REFUND', `退款落库失败: ${error.message}`);
+    }
+    // RPC 不存在（迁移未执行）——拒绝退款而不是走非事务的兼容路径：
+    // 权益回收一旦非原子，失败会造成「钱退了权益没收」或反向的资损，宁可失败重试。
+    throw new PaymentError('MIGRATION_REQUIRED', '数据库尚未执行退款迁移（commit_refund），请先在 Supabase SQL Editor 执行 20260828_refund.sql');
+  }
+  throw new PaymentError('MIGRATION_REQUIRED', '数据库客户端不支持 RPC，无法安全退款');
+}
+
+/** 构建微信退款回调通知 URL */
+export function buildRefundNotifyUrl(): string {
+  const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
+  if (appUrl) return `${appUrl}/api/payment/notify/refund-wechat`;
+  return 'https://your-domain.com/api/payment/notify/refund-wechat';
 }

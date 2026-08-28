@@ -30,6 +30,8 @@ export type OrderStatus =
   | 'expired'
   | 'cancelled';
 
+export type RefundStatus = 'partial' | 'full';
+
 export interface AdminOrderRow {
   id: string;
   user_id: string;
@@ -44,6 +46,26 @@ export interface AdminOrderRow {
   paid_at: string | null;
   expires_at: string | null;
   completed_at: string | null;
+  // 退款相关（20260828_refund.sql 迁移后存在）
+  refund_amount: number | null;
+  refund_status: RefundStatus | null;
+  refunded_at: string | null;
+  refunded_by: string | null;
+}
+
+/** 退款流水（refunds 表行） */
+export interface RefundRecord {
+  id: string;
+  order_id: string;
+  refund_no: string;
+  amount: number;
+  status: 'processing' | 'success' | 'failed' | 'abnormal';
+  reason: string | null;
+  wechat_refund_id: string | null;
+  operator_id: string | null;
+  operator_email?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AdminResumeRow {
@@ -115,6 +137,34 @@ export const ORDER_STATUS_BADGE: Record<OrderStatus, 'warning' | 'info' | 'succe
 export const PAYMENT_METHOD_TEXT: Record<string, string> = {
   wechat: '微信支付',
   alipay: '支付宝',
+};
+
+/** 退款单状态（refunds.status）→ 文本 */
+export const REFUND_RECORD_STATUS_TEXT: Record<RefundRecord['status'], string> = {
+  processing: '处理中',
+  success: '退款成功',
+  failed: '退款失败',
+  abnormal: '退款异常',
+};
+
+/** 退款单状态 → Badge variant */
+export const REFUND_RECORD_STATUS_BADGE: Record<RefundRecord['status'], 'info' | 'success' | 'destructive' | 'warning'> = {
+  processing: 'info',
+  success: 'success',
+  failed: 'destructive',
+  abnormal: 'warning',
+};
+
+/** 订单退款进度（orders.refund_status）→ 文本 */
+export const ORDER_REFUND_STATUS_TEXT: Record<RefundStatus, string> = {
+  partial: '部分退款',
+  full: '已全额退款',
+};
+
+/** 订单退款进度 → Badge variant */
+export const ORDER_REFUND_STATUS_BADGE: Record<RefundStatus, 'warning' | 'destructive'> = {
+  partial: 'warning',
+  full: 'destructive',
 };
 
 /** 方案类型 → 名称 */

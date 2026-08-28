@@ -22,4 +22,9 @@ export const mockProvider: OrderProvider = {
   async markPaid() {
     // 模拟确认：无实际动作，订单状态由 notify/mock 端点驱动
   },
+
+  async refundOrder(input) {
+    // 模拟退款：直接返回成功（本地演练退款链路用，真实模式走 paymentWechat）
+    return { status: 'SUCCESS', wechatRefundId: `mock_${input.outRefundNo}` };
+  },
 };
