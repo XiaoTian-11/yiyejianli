@@ -147,6 +147,20 @@ export default function App() {
     setIsUpgradeModalOpen(true);
   };
 
+  // 会员是否有效（tier=member 且未过期；过期由服务端 getUser 自动降级，这里兜底）
+  const isMemberValid = appUser?.tier === 'member';
+  // 简历数量上限：会员 30，非会员 5（会员到期 → tier 已降为 free → 回到 5）
+  const resumeLimit = isMemberValid ? 30 : 5;
+
+  // 是否还能创建新简历：达到上限则拦截并引导升级
+  const canCreateResume = (): boolean => {
+    if (resumes.length >= resumeLimit) {
+      triggerUpgrade('limit');
+      return false;
+    }
+    return true;
+  };
+
   const refreshResumesList = async (uId: string) => {
     try {
       const list = await getResumesList(uId);
@@ -699,6 +713,8 @@ export default function App() {
 
   // 应用所选模板：创建简历并进入编辑器（登录后 / 直接点击共用）
   const applyTemplateAndEnter = async (id: TemplateId, uid: string) => {
+    // 简历数量上限拦截（非会员 5 个 / 会员 30 个；会员到期自动降级回 5）
+    if (!canCreateResume()) return;
     setTemplateId(id);
     setCreatingResume(true);
 
@@ -714,7 +730,11 @@ export default function App() {
       creative_designer: '创意视觉设计简历',
       engineering_tech: '工程建设大厂简历'
     };
-    const newName = `${templateNames[id] || '求职简历'}_${new Date().toLocaleDateString('zh-CN', {month:'numeric', day:'numeric'})}`;
+    // 命名：简历名 + 当前时间（YYYY-MM-DD HH:mm），便于区分多份同模板简历
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const timeSuffix = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const newName = `${templateNames[id] || '求职简历'}_${timeSuffix}`;
 
     const industryKey = TEMPLATE_INDUSTRY_MAP[id] || 'product';
     const initialIndustryData = INDUSTRY_SAMPLES[industryKey]?.data || INITIAL_DATA;
@@ -772,10 +792,18 @@ export default function App() {
   // 完成（activeResumeId 已定）后才判断，避免与简历列表加载产生竞态。
   useEffect(() => {
     if (authLoading || !user || activeResumeId || location.pathname !== PAGE_PATH.builder) return;
+    // 简历数量上限拦截
+    if (!canCreateResume()) {
+      navigate(PAGE_PATH.dashboard);
+      return;
+    }
     let cancelled = false;
     const create = async () => {
       try {
-        const newId = await createNewResume(user.uid, '我的简历', 'modern', data);
+        const now = new Date();
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const name = `我的简历_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+        const newId = await createNewResume(user.uid, name, 'modern', data);
         if (cancelled) return;
         setActiveResumeId(newId);
       } catch (err) {
@@ -1067,12 +1095,18 @@ export default function App() {
       {/* Mobile Menu Overlay */}
       <AnimatePresence>
         {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed inset-x-6 top-28 z-40 md:hidden glass rounded-[2rem] p-6 shadow-2xl border border-white/50 flex flex-col gap-1.5"
-          >
+          <>
+            {/* 透明点击捕获层：点击菜单外的页面区域关闭（无视觉遮罩） */}
+            <div
+              className="fixed inset-0 z-30 md:hidden"
+              onClick={() => setMobileMenuOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="fixed inset-x-6 top-28 z-40 md:hidden glass rounded-[2rem] p-6 shadow-2xl border border-white/50 flex flex-col gap-1.5"
+            >
             {/* Nav Links */}
             <button onClick={() => { navigate(PAGE_PATH.home); setMobileMenuOpen(false); }} className="text-base font-bold p-3.5 text-left border-b border-slate-100 flex items-center justify-between hover:bg-slate-55 rounded-xl transition-all">
               <span>首页</span>
@@ -1137,7 +1171,8 @@ export default function App() {
               <span>立即在线制作</span>
               <ChevronRight className="w-4 h-4" />
             </button>
-          </motion.div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 

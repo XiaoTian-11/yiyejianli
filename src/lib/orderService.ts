@@ -10,6 +10,8 @@ export interface ClientOrder {
   planType: string;
   amount: number;
   status: 'pending' | 'paid' | 'completed' | 'expired' | 'cancelled';
+  refundStatus?: 'full' | 'partial' | null;
+  refundAmount?: number;
   createdAt: string;
   paidAt?: string;
   completedAt?: string;
@@ -21,6 +23,12 @@ export const ORDER_STATUS_TEXT: Record<ClientOrder['status'], string> = {
   completed: '已完成',
   expired: '已过期',
   cancelled: '已取消',
+};
+
+/** 退款状态展示（后台 refund_status: full/partial） */
+export const REFUND_STATUS_TEXT: Record<'full' | 'partial', string> = {
+  full: '已全额退款',
+  partial: '已部分退款',
 };
 
 export async function getMyOrders(userId: string): Promise<ClientOrder[]> {
@@ -43,6 +51,8 @@ export async function getMyOrders(userId: string): Promise<ClientOrder[]> {
       planType: r.plan_type,
       amount: Number(r.amount),
       status: r.status,
+      refundStatus: r.refund_status ?? null,
+      refundAmount: r.refund_amount != null ? Number(r.refund_amount) : undefined,
       createdAt: r.created_at,
       paidAt: r.paid_at,
       completedAt: r.completed_at,

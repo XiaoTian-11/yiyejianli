@@ -20,7 +20,7 @@ import {
 import { cn } from '../lib/utils';
 import { DashboardSection, User as AppUser } from '../types';
 import { ResumeDocument, formatTimeAgo } from '../lib/supabaseService';
-import { ClientOrder, ORDER_STATUS_TEXT } from '../lib/orderService';
+import { ClientOrder, ORDER_STATUS_TEXT, REFUND_STATUS_TEXT } from '../lib/orderService';
 import { PLANS } from '../constants';
 import { SEO } from './SEO';
 import { A4TemplateFrame } from './A4TemplateFrame';
@@ -443,21 +443,33 @@ const Overview: React.FC<{
               暂无订单，去开通会员或购买导出吧。
             </div>
           ) : orders.slice(0, 3).map(order => (
-            <div key={order.id} className="p-6 flex items-center justify-between hover:bg-slate-50 transition-colors">
-              <div className="flex items-center gap-6">
-                <div className="w-12 h-12 bg-macaron-mint/30 rounded-xl flex items-center justify-center text-[#2d5a4c]">
+            <div key={order.id} className="p-6 flex items-center justify-between gap-4 hover:bg-slate-50 transition-colors">
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="w-12 h-12 bg-macaron-mint/30 rounded-xl flex items-center justify-center text-[#2d5a4c] shrink-0">
                   {order.planType === 'single_export' ? <FileText className="w-6 h-6" /> : <Star className="w-6 h-6" />}
                 </div>
-                <div>
-                  <h4 className="font-bold text-slate-800">{orderPlanName(order.planType)}</h4>
-                  <p className="text-xs text-slate-400 font-medium">订单编号 {order.id} • {formatOrderDate(order.createdAt)}</p>
+                <div className="min-w-0">
+                  <h4 className="font-bold text-slate-800 truncate">{orderPlanName(order.planType)}</h4>
+                  <p className="text-xs text-slate-400 font-medium truncate">订单编号 {order.id}</p>
+                  <p className="text-[10px] text-slate-300 font-medium">{formatOrderDate(order.createdAt)}</p>
                 </div>
               </div>
-              <div className="text-right space-y-1">
-                <p className="font-black text-slate-900">¥{order.amount.toFixed(2)}</p>
-                <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest rounded-full px-2 py-0.5 ${ORDER_STATUS_STYLE[order.status].cls}`}>
-                  {ORDER_STATUS_TEXT[order.status]}
-                </span>
+              <div className="text-right space-y-1 shrink-0">
+                {order.refundStatus ? (
+                  <>
+                    <p className="font-black text-slate-400 line-through">¥{order.amount.toFixed(2)}</p>
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest rounded-full px-2 py-0.5 ${order.refundStatus === 'full' ? 'bg-red-100 text-red-500' : 'bg-amber-100 text-amber-600'}`}>
+                      {REFUND_STATUS_TEXT[order.refundStatus]}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-black text-slate-900">¥{order.amount.toFixed(2)}</p>
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest rounded-full px-2 py-0.5 ${ORDER_STATUS_STYLE[order.status].cls}`}>
+                      {ORDER_STATUS_TEXT[order.status]}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           ))}
@@ -592,6 +604,7 @@ const OrdersView: React.FC<{ orders: ClientOrder[] }> = ({ orders }) => (
             </tr>
           ) : orders.map(order => {
             const style = ORDER_STATUS_STYLE[order.status];
+            const isRefunded = order.refundStatus === 'full';
             return (
               <tr key={order.id} className="hover:bg-slate-50/50 transition-colors">
                 <td className="px-8 py-6">
@@ -604,10 +617,19 @@ const OrdersView: React.FC<{ orders: ClientOrder[] }> = ({ orders }) => (
                   <span className="text-sm font-medium text-slate-500">{formatOrderDate(order.createdAt)}</span>
                 </td>
                 <td className="px-8 py-6 text-right">
-                  <span className="font-black text-slate-900">¥{order.amount.toFixed(2)}</span>
+                  {isRefunded ? (
+                    <span className="font-black text-slate-400 line-through">¥{order.amount.toFixed(2)}</span>
+                  ) : (
+                    <span className="font-black text-slate-900">¥{order.amount.toFixed(2)}</span>
+                  )}
                 </td>
                 <td className="px-8 py-6">
-                  <div className="flex items-center justify-center">
+                  <div className="flex items-center justify-center gap-2">
+                    {order.refundStatus && (
+                      <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${order.refundStatus === 'full' ? 'bg-red-100 text-red-500' : 'bg-amber-100 text-amber-600'}`}>
+                        {REFUND_STATUS_TEXT[order.refundStatus]}
+                      </div>
+                    )}
                     <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${style.cls}`}>
                       {style.text}
                     </div>

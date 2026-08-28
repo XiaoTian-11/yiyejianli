@@ -2,15 +2,16 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TEMPLATES } from '../constants';
 import { SEO } from '../components/SEO';
-import { 
-  Search, 
-  ChevronRight, 
-  ChevronLeft, 
-  Star, 
-  CheckCircle2, 
+import {
+  Search,
+  ChevronRight,
+  ChevronLeft,
+  Star,
+  CheckCircle2,
   ArrowRight,
   Eye,
-  X
+  X,
+  Filter
 } from 'lucide-react';
 import { TemplateId, MembershipTier, ResumeData } from '../types';
 import { cn } from '../lib/utils';
@@ -29,6 +30,8 @@ export const TemplatesPage: React.FC<TemplatesPageProps> = ({ onSelect, userTier
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
+  // 手机端筛选栏折叠（默认收起，模板首屏直接可见）
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
   const [previewTemplate, setPreviewTemplate] = useState<any>(() => {
     if (initialPreviewTemplateId) {
@@ -101,8 +104,17 @@ export const TemplatesPage: React.FC<TemplatesPageProps> = ({ onSelect, userTier
       />
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col lg:flex-row gap-12">
-          {/* Sidebar */}
-          <aside className="w-full lg:w-72 flex flex-col gap-8">
+          {/* 手机端「筛选」开关（桌面端隐藏） */}
+          <button
+            onClick={() => setMobileFilterOpen(!mobileFilterOpen)}
+            className="lg:hidden flex items-center justify-between w-full px-4 py-3 bg-white rounded-2xl border border-slate-100 shadow-sm text-sm font-bold text-slate-700"
+          >
+            <span className="flex items-center gap-2"><Filter className="w-4 h-4 text-slate-400" /> 筛选条件</span>
+            <span className="text-slate-400 text-xs">{mobileFilterOpen ? '收起' : '展开'}</span>
+          </button>
+
+          {/* Sidebar：手机端默认收起（点击筛选按钮展开） */}
+          <aside className={`w-full lg:w-72 flex flex-col gap-8 ${mobileFilterOpen ? '' : 'hidden lg:flex'}`}>
             <section className="space-y-6">
               <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest px-1">筛选条件</h3>
               
@@ -124,7 +136,10 @@ export const TemplatesPage: React.FC<TemplatesPageProps> = ({ onSelect, userTier
                 <p className="text-slate-400 text-xs leading-relaxed font-medium">
                   升级为尊享会员，立即可用 50+ 套由顶级设计师打造的求职利器。
                 </p>
-                <button className="w-full py-3.5 bg-white text-slate-900 rounded-xl font-black text-xs hover:scale-105 active:scale-95 transition-all mt-4 tracking-widest uppercase">
+                <button
+                  onClick={() => onTriggerUpgrade?.('templates')}
+                  className="w-full py-3.5 bg-white text-slate-900 rounded-xl font-black text-xs hover:scale-105 active:scale-95 transition-all mt-4 tracking-widest uppercase"
+                >
                   立即查看会员方案
                 </button>
               </div>
@@ -216,12 +231,12 @@ export const TemplatesPage: React.FC<TemplatesPageProps> = ({ onSelect, userTier
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className="relative w-full max-w-4xl h-full bg-white shadow-2xl flex flex-col"
             >
-              <header className="px-8 py-6 border-b border-slate-100 flex items-center justify-between">
-                <div>
+              <header className="px-4 md:px-8 py-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
                   <h3 className="text-2xl font-bold text-slate-800">{previewTemplate.name}</h3>
                   <p className="text-slate-500 text-sm">{previewTemplate.description}</p>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-3 justify-end">
                   <button
                     onClick={() => {
                       if (previewTemplate.isPremium && userTier !== 'member') {
@@ -232,7 +247,7 @@ export const TemplatesPage: React.FC<TemplatesPageProps> = ({ onSelect, userTier
                       setPreviewTemplate(null);
                     }}
                     className={cn(
-                      "px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-xl shadow-slate-200 hover:scale-105 active:scale-95",
+                      "px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-xl shadow-slate-200 hover:scale-105 active:scale-95 whitespace-nowrap",
                       previewTemplate.isPremium && userTier !== 'member'
                         ? "bg-slate-300 text-slate-500 cursor-not-allowed"
                         : "bg-slate-900 text-white"
@@ -240,7 +255,7 @@ export const TemplatesPage: React.FC<TemplatesPageProps> = ({ onSelect, userTier
                   >
                     {previewTemplate.isPremium && userTier !== 'member' ? '会员专属模板' : '立即使用此模板'} <ArrowRight className="w-4 h-4" />
                   </button>
-                  <button 
+                  <button
                     onClick={() => setPreviewTemplate(null)}
                     className="p-3 text-slate-400 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-all"
                   >

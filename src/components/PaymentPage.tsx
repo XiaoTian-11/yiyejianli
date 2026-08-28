@@ -41,8 +41,41 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ onBack, onSuccess, pla
         </button>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-          {/* Order Summary */}
-          <div className="space-y-8">
+          {/* Payment（手机端优先显示在首屏；桌面端 order 复位） */}
+          <div className="order-first lg:order-none space-y-8">
+            <h2 className="text-2xl font-bold text-slate-800">选择支付方式</h2>
+
+            <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white space-y-6 shadow-2xl shadow-blue-100">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-400 uppercase tracking-widest text-xs">实付金额</span>
+                <span className="text-4xl font-display font-black">¥{plan.price.toFixed(2)}</span>
+              </div>
+
+              <div className="bg-white rounded-[2rem] px-6 py-8">
+                <PayWithQR
+                  planType={plan.type}
+                  onSuccess={onSuccess}
+                  onBack={onBack}
+                />
+              </div>
+
+              <div className="flex items-center justify-center gap-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                <p className="flex items-center gap-1"><Smartphone className="w-3 h-3" /> 微信内一键支付</p>
+                <div className="w-1 h-1 bg-slate-700 rounded-full" />
+                <p>安全加密</p>
+                <div className="w-1 h-1 bg-slate-700 rounded-full" />
+                <p>即时到账</p>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-400 flex items-center gap-1.5 justify-center font-medium">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              支付完成后自动开通，刷新页面会员权益依然生效
+            </p>
+          </div>
+
+          {/* Order Summary（手机端在支付下方；桌面端复位） */}
+          <div className="order-last lg:order-none space-y-8">
             <div className="space-y-4">
               <h1 className="text-4xl font-display font-bold text-slate-900">确认订单</h1>
               <p className="text-slate-500 italic">您正在为您的职业前程进行一项明智的投资。</p>
@@ -90,38 +123,6 @@ export const PaymentPage: React.FC<PaymentPageProps> = ({ onBack, onSuccess, pla
             </div>
           </div>
 
-          {/* Payment */}
-          <div className="space-y-8">
-            <h2 className="text-2xl font-bold text-slate-800">选择支付方式</h2>
-
-            <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white space-y-6 shadow-2xl shadow-blue-100">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-400 uppercase tracking-widest text-xs">实付金额</span>
-                <span className="text-4xl font-display font-black">¥{plan.price.toFixed(2)}</span>
-              </div>
-
-              <div className="bg-white rounded-[2rem] px-6 py-8">
-                <PayWithQR
-                  planType={plan.type}
-                  onSuccess={onSuccess}
-                  onBack={onBack}
-                />
-              </div>
-
-              <div className="flex items-center justify-center gap-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                <p className="flex items-center gap-1"><Smartphone className="w-3 h-3" /> 微信内一键支付</p>
-                <div className="w-1 h-1 bg-slate-700 rounded-full" />
-                <p>安全加密</p>
-                <div className="w-1 h-1 bg-slate-700 rounded-full" />
-                <p>即时到账</p>
-              </div>
-            </div>
-
-            <p className="text-[11px] text-slate-400 flex items-center gap-1.5 justify-center font-medium">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              支付完成后自动开通，刷新页面会员权益依然生效
-            </p>
-          </div>
         </div>
       </div>
     </div>
