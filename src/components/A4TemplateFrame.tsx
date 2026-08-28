@@ -40,7 +40,7 @@ export const A4TemplateFrame: React.FC<A4TemplateFrameProps> = ({ templateId, da
   }, []);
 
   return (
-    <div ref={hostRef} className={`relative w-full h-full overflow-hidden flex items-center justify-center ${className ?? ''}`}>
+    <div ref={hostRef} className={`w-full h-full overflow-hidden flex items-center justify-center ${className ?? ''}`}>
       {/* 舞台：恒 794×1123，作为 @container 让模板内 @md:* 命中多栏 */}
       <div
         className="@container"
