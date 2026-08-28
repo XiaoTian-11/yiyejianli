@@ -10,6 +10,7 @@ import { SEO } from './components/SEO';
 import { AuthModal } from './components/AuthModal';
 import { UpgradeModal } from './components/UpgradeModal';
 import { ExportModal } from './components/ExportModal';
+import { ExportConfirmModal } from './components/ExportConfirmModal';
 import { AgreementModal } from './components/AgreementModal';
 import { auth, onAuthStateChanged, signOut } from './lib/supabase';
 import type { User } from '@supabase/supabase-js';
@@ -110,6 +111,8 @@ export default function App() {
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState<string>('templates');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  // 次费用户导出前的二次确认弹窗（点「继续导出」才扣配额并打印）
+  const [isExportConfirmOpen, setIsExportConfirmOpen] = useState(false);
   const [isAgreementModalOpen, setIsAgreementModalOpen] = useState(false);
   const [agreementInitialTab, setAgreementInitialTab] = useState<'service' | 'privacy'>('service');
   const [exporting, setExporting] = useState(false);
@@ -297,34 +300,66 @@ export default function App() {
   // Use a ref to track the last saved data to prevent infinite loops if loading triggers a save
   const lastSavedDataRef = useRef<string>('');
 
+  // 最新 data 的镜像：防抖 timer 回调 / cleanup flush 时从这里读，
+  // 避免闭包捕获旧的 data
+  const dataRef = useRef(data);
+  useEffect(() => { dataRef.current = data; }, [data]);
+  // 卸载后不再 setSaveStatus（React 18+ 不警告，但避免无意义更新）。
+  // mount 时必须重置回 true：StrictMode 双挂载会先跑一次 cleanup（置 false），
+  // 第二次 mount 若不重置，mountedRef 永远为 false，saveStatus 永远不会更新。
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // 执行保存：内容与上次落盘一致则跳过；先占位 lastSavedDataRef 防并发重复保存。
+  const performSave = async () => {
+    const uid = user?.uid;
+    const rid = activeResumeId;
+    if (!uid || !rid) return;
+    const dataToSave = dataRef.current;
+    const dataStr = JSON.stringify(dataToSave);
+    if (dataStr === lastSavedDataRef.current) return;
+    lastSavedDataRef.current = dataStr;
+    if (mountedRef.current) setSaveStatus('saving');
+    try {
+      const activeResume = resumes.find(r => r.id === rid);
+      const name = activeResume ? activeResume.name : '我的简历';
+      const score = activeResume ? activeResume.score : 85;
+      const status = activeResume ? activeResume.status : 'draft';
+
+      await saveResumeWithId(uid, rid, name, dataToSave, score, status, templateId);
+
+      // Update local list
+      setResumes(prev => prev.map(r => r.id === rid ? { ...r, data: dataToSave, templateId, updatedAt: new Date().toISOString() } : r));
+
+      if (mountedRef.current) {
+        setSaveStatus('saved');
+        setTimeout(() => { if (mountedRef.current) setSaveStatus('idle'); }, 2000);
+      }
+    } catch (err) {
+      if (mountedRef.current) setSaveStatus('error');
+      // 失败则放行下次重试
+      lastSavedDataRef.current = '';
+    }
+  };
+
   useEffect(() => {
     if (!user || !activeResumeId) return;
-    
+
     const dataStr = JSON.stringify(data);
     if (dataStr === lastSavedDataRef.current) return;
 
-    const timer = setTimeout(async () => {
-      setSaveStatus('saving');
-      try {
-        const activeResume = resumes.find(r => r.id === activeResumeId);
-        const name = activeResume ? activeResume.name : '我的简历';
-        const score = activeResume ? activeResume.score : 85;
-        const status = activeResume ? activeResume.status : 'draft';
+    const timer = setTimeout(performSave, 1000);
 
-        await saveResumeWithId(user.uid, activeResumeId, name, data, score, status, templateId);
-        
-        // Update local list
-        setResumes(prev => prev.map(r => r.id === activeResumeId ? { ...r, data, templateId, updatedAt: new Date().toISOString() } : r));
-
-        lastSavedDataRef.current = dataStr;
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-      } catch (err) {
-        setSaveStatus('error');
-      }
-    }, 1000);
-
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      // cleanup flush：切换简历/登出等导致 effect 重置时，未落盘的改动立即保存
+      //（fire-and-forget，cleanup 不能 async）。切简历场景下 activeResumeId
+      // 仍是旧值（state 批处理，cleanup 跑在 commit 前），旧改动恰好存回旧简历。
+      void performSave();
+    };
   }, [data, user, activeResumeId]);
 
   const handleEditResume = (id: string) => {
@@ -411,6 +446,16 @@ export default function App() {
     handleExportPDF();
   };
 
+  // 扣 1 次导出配额并触发打印。仅在用户于确认弹窗点「继续导出」或支付成功后自动导出时调用。
+  // 打印框取消不退回：react-to-print 的 onAfterPrint 在成功/取消时都会触发，无法区分。
+  const consumeQuotaAndExport = () => {
+    const newQuota = (appUser?.remainingPdfExports ?? 0) - 1;
+    setAppUser(prev => prev ? { ...prev, remainingPdfExports: newQuota } : prev);
+    // 配额消耗持久化到 users 表，刷新后不丢失
+    void updateUser(user!.uid, { remaining_pdf_exports: newQuota });
+    tryExportPDF();
+  };
+
   const handlePurchaseSuccess = async (planType: string) => {
     if (!user) return;
     const uid = user.uid || user.id;
@@ -442,6 +487,23 @@ export default function App() {
     // 刷新"我的订单"列表
     refreshOrders(uid);
   };
+
+  // 自动保存状态徽章：预览列 header 与编辑列 header（手机编辑态预览列隐藏，
+  // 编辑列也需可见）共用同一渲染。
+  const SaveStatusBadge = ({ status }: { status: 'idle' | 'saving' | 'saved' | 'error' }) => (
+    status === 'idle' ? null : (
+      <div className={cn(
+        "text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg transition-all",
+        status === 'saving' && "text-blue-500 animate-pulse",
+        status === 'saved' && "text-green-500",
+        status === 'error' && "text-red-500"
+      )}>
+        {status === 'saving' && '正在保存...'}
+        {status === 'saved' && '已保存'}
+        {status === 'error' && '保存失败'}
+      </div>
+    )
+  );
 
   const NavLink = ({ page, label }: { page: Page; label: string }) => {
     const active = pathname === PAGE_PATH[page];
@@ -618,6 +680,7 @@ export default function App() {
               <div>
                 <h2 className="text-3xl font-display font-bold tracking-tight text-slate-800">简历编辑器</h2>
                 <p className="text-slate-400 text-sm font-medium">草稿: {data.personalInfo.fullName || '新简历'}</p>
+                <SaveStatusBadge status={saveStatus} />
               </div>
             </div>
             <div className="flex items-center bg-slate-100/50 p-1 rounded-2xl border border-slate-200">
@@ -712,18 +775,7 @@ export default function App() {
                   <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
                   实时
                 </div>
-                {saveStatus !== 'idle' && (
-                  <div className={cn(
-                    "text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg transition-all",
-                    saveStatus === 'saving' && "text-blue-500 animate-pulse",
-                    saveStatus === 'saved' && "text-green-500",
-                    saveStatus === 'error' && "text-red-500"
-                  )}>
-                    {saveStatus === 'saving' && '正在保存...'}
-                    {saveStatus === 'saved' && '已保存'}
-                    {saveStatus === 'error' && '保存失败'}
-                  </div>
-                )}
+                <SaveStatusBadge status={saveStatus} />
               </div>
               <div className="flex items-center gap-3">
                 {/* Mobile Back To Editor */}
@@ -746,11 +798,8 @@ export default function App() {
                     if (appUser?.tier === 'member') {
                       tryExportPDF();
                     } else if ((appUser?.remainingPdfExports ?? 0) > 0) {
-                      const newQuota = (appUser?.remainingPdfExports ?? 0) - 1;
-                      setAppUser(prev => prev ? { ...prev, remainingPdfExports: newQuota } : prev);
-                      // 配额消耗持久化到 users 表，刷新后不丢失
-                      void updateUser(user.uid, { remaining_pdf_exports: newQuota });
-                      tryExportPDF();
+                      // 次费用户先二次确认，点「继续导出」才扣配额（避免打印框取消白扣次数）
+                      setIsExportConfirmOpen(true);
                     } else {
                       console.log('No export quota, showing purchase modal...');
                       setIsExportModalOpen(true);
@@ -1066,6 +1115,16 @@ export default function App() {
         onClose={() => setIsExportModalOpen(false)}
         onPurchaseSuccess={(planType) => { void handlePurchaseSuccess(planType); }}
         onOpenAgreement={openAgreement}
+      />
+
+      <ExportConfirmModal
+        isOpen={isExportConfirmOpen}
+        remaining={appUser?.remainingPdfExports ?? 0}
+        onConfirm={() => {
+          setIsExportConfirmOpen(false);
+          consumeQuotaAndExport();
+        }}
+        onClose={() => setIsExportConfirmOpen(false)}
       />
 
       <UpgradeModal

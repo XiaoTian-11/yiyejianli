@@ -172,13 +172,7 @@ export const saveResumeWithId = async (
   templateId?: string
 ): Promise<void> => {
   try {
-    // 先检查记录是否存在，确定是用 insert 还是 update
-    const { data: existingRows } = await supabase
-      .from('resumes')
-      .select('id')
-      .eq('id', resumeId)
-      .maybeSingle();
-
+    // 单次 upsert（主键 id 冲突即覆盖），替代先 select 判存在再 update/insert 的非原子写法
     const row = {
       id: resumeId,
       user_id: userId,
@@ -189,18 +183,10 @@ export const saveResumeWithId = async (
       template_id: templateId || 'modern',
     };
 
-    if (existingRows) {
-      const { error } = await supabase
-        .from('resumes')
-        .update(row)
-        .eq('id', resumeId);
-      if (error) throw error;
-    } else {
-      const { error } = await supabase
-        .from('resumes')
-        .insert(row);
-      if (error) throw error;
-    }
+    const { error } = await supabase
+      .from('resumes')
+      .upsert(row);
+    if (error) throw error;
   } catch (error) {
     console.error('Supabase Error (saveResumeWithId):', JSON.stringify(error));
     throw new Error(JSON.stringify(error));
