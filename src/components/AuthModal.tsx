@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Lock, AlertCircle, X, ArrowRight, Loader2, LogIn, UserPlus } from 'lucide-react';
 import { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from '../lib/supabase';
@@ -7,15 +7,26 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenAgreement?: (tab: 'service' | 'privacy') => void;
+  referralEnabled?: boolean;          // 活动总开关（来自 App.tsx 配置）
+  initialReferralCode?: string;       // ?ref= 预填的邀请码
+  onRegistered?: (referralCode: string | null) => void;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onOpenAgreement }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onOpenAgreement, referralEnabled, initialReferralCode, onRegistered }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [referralCode, setReferralCode] = useState('');
+
+  // 开关打开且传入 initialReferralCode 时预填（仅注册模式首次打开）
+  useEffect(() => {
+    if (isOpen && mode === 'register' && referralEnabled && initialReferralCode && !referralCode) {
+      setReferralCode(initialReferralCode);
+    }
+  }, [isOpen, mode, referralEnabled, initialReferralCode]);
 
   const getFriendlyErrorMessage = (error: any) => {
     // Supabase Auth 错误处理
@@ -68,6 +79,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onOpenAgr
         await signInWithEmailAndPassword(auth, email.trim(), password);
       } else {
         await createUserWithEmailAndPassword(auth, email.trim(), password);
+        onRegistered?.(referralEnabled && referralCode ? referralCode : null);
       }
       onClose();
     } catch (err: any) {
@@ -198,6 +210,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onOpenAgr
                         required
                       />
                     </div>
+                  </div>
+                )}
+
+                {referralEnabled && mode === 'register' && (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                      邀请码（选填）· 好友各得 1 次免费导出
+                    </label>
+                    <div className="relative">
+                      <UserPlus className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        value={referralCode}
+                        onChange={(e) => setReferralCode(e.target.value.trim().toUpperCase())}
+                        placeholder="请输入好友的 6 位邀请码"
+                        className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-50 focus:border-blue-200 outline-none transition-all text-xs"
+                        maxLength={6}
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-medium pl-1">
+                      注册成功后，你和好友各获得 1 次免费导出（每人最多得 2 次）
+                    </p>
                   </div>
                 )}
 

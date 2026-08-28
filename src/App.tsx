@@ -19,6 +19,11 @@ import { saveResume, getResume, getResumesList, saveResumeWithId, deleteResume, 
 import { getUser, checkAndDowngrade, updateUser } from './lib/supabaseUserService';
 import { getMyOrders, ClientOrder } from './lib/orderService';
 import { getOauthUrl, getCachedOpenid, saveOpenidCache } from './lib/paymentApi';
+import {
+  readRefParam, storeReferralCode, getStoredReferralCode,
+  fetchAppConfig, grantReferralReward, retryPendingReward,
+  deriveReferralStats, fetchMyReferralStats, consumePdfQuota,
+} from './lib/referralService';
 import { DashboardPage } from './components/DashboardPage';
 import { PaymentPage } from './components/PaymentPage';
 import { LandingPage } from './pages/LandingPage';
@@ -26,7 +31,7 @@ import { TemplatesPage } from './pages/TemplatesPage';
 import { PricingPage } from './pages/PricingPage';
 import { INITIAL_DATA } from './constants';
 import { INDUSTRY_SAMPLES, TEMPLATE_INDUSTRY_MAP } from './constants/industrySamples';
-import { ResumeData, TemplateId, Page, User as AppUser, PlanType } from './types';
+import { ResumeData, TemplateId, Page, User as AppUser, PlanType, AppConfig, ReferralStats } from './types';
 import { cn } from './lib/utils';
 import { getPlanByType, calculateRenewedMemberUntil, deriveCurrentPlan } from './lib/pricing';
 import { PAGE_PATH, isProtectedPath } from './lib/routes';
@@ -103,6 +108,10 @@ export default function App() {
   // 未登录用户在模板中心选中模板时先记住模板 id，登录成功后自动应用该模板进入编辑器
   const pendingTemplateId = useRef<TemplateId | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [referralEnabled, setReferralEnabled] = useState(false);   // 活动总开关
+  const [inviteLinkCode, setInviteLinkCode] = useState<string | null>(null); // 来自 URL 的邀请码
+  const [referralStats, setReferralStats] = useState<ReferralStats>({ invitedCount: 0, bonusCount: 0 });
+  const [dashboardSectionRequest, setDashboardSectionRequest] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [selectedPlanId, setSelectedPlanId] = useState<string>('month');
   const [showScoring, setShowScoring] = useState(false);
@@ -136,6 +145,42 @@ export default function App() {
     if (e) e.preventDefault();
     setAgreementInitialTab(tab);
     setIsAgreementModalOpen(true);
+  };
+
+  // 启动时读取邀请活动总开关
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAppConfig().then((cfg: AppConfig) => {
+      if (!cancelled) setReferralEnabled(cfg.referralEnabled);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  // URL ?ref 带参 → 存 localStorage（仅开关开启时，微信 WebView 会清 sessionStorage，故用 localStorage）
+  useEffect(() => {
+    if (!referralEnabled) return;
+    const ref = readRefParam(window.location.search);
+    if (ref) {
+      storeReferralCode(ref);
+      setInviteLinkCode(ref);
+    } else {
+      setInviteLinkCode(getStoredReferralCode());
+    }
+  }, [referralEnabled]);
+
+  // 注册成功后发放邀请奖励并刷新用户配额/进度
+  const handleRegistered = async (referralCode: string | null) => {
+    if (!referralEnabled) return;
+    const code = referralCode || getStoredReferralCode();
+    if (!code) return;
+    const result = await grantReferralReward(code);
+    if (result.rewarded || result.error) storeReferralCode(null);
+    const uid = user?.uid || user?.id;
+    if (result.rewarded && uid) {
+      const { user: fresh } = await getUser(uid);
+      if (fresh) setAppUser({ ...fresh, email: user.email || fresh.email });
+      void fetchMyReferralStats().then(setReferralStats);
+    }
   };
 
   const triggerUpgrade = (reason: string) => {
@@ -251,6 +296,19 @@ export default function App() {
           remainingPngExports: 0,
           remainingAtsChecks: 0,
         });
+
+        // 邀请奖励：登录后拉取邀请进度 + 幂等重试未完成的发放（注册后断网兜底）。
+        // 不依赖 referralEnabled 闭包（onAuthStateChanged effect 依赖数组为 []，
+        // 捕获的是初始值）；改用「是否有暂存邀请码 + 总是拉进度」判断。
+        void fetchMyReferralStats().then(setReferralStats);
+        if (getStoredReferralCode()) {
+          void retryPendingReward().then(() => {
+            void getUser(normalizedUser.uid).then(({ user: fresh }) => {
+              if (fresh) setAppUser({ ...fresh, email: currentUser.email || fresh.email });
+              void fetchMyReferralStats().then(setReferralStats);
+            });
+          });
+        }
 
         handlePostLoginJump();
       } else {
@@ -597,11 +655,17 @@ export default function App() {
 
   // 扣 1 次导出配额并触发导出。仅在用户于确认弹窗点「继续导出」或支付成功后自动导出时调用。
   // 注意：截图生成 PDF 是可感知完成的操作，若失败不扣（成功才扣，公平且避免资损）。
-  const consumeQuotaAndExport = () => {
-    const newQuota = (appUser?.remainingPdfExports ?? 0) - 1;
-    setAppUser(prev => prev ? { ...prev, remainingPdfExports: newQuota } : prev);
-    // 配额消耗持久化到 users 表，刷新后不丢失
-    void updateUser(user!.uid, { remaining_pdf_exports: newQuota });
+  // RLS 收紧后前端不能直写 users 表，扣配额走服务端 RPC consume_quota。
+  const consumeQuotaAndExport = async () => {
+    const result = await consumePdfQuota();
+    if (!result.success) {
+      setExportError(result.reason === 'no_quota' ? '导出次数不足' : '扣减配额失败，请重试');
+      return;
+    }
+    setAppUser(prev => prev ? {
+      ...prev,
+      remainingPdfExports: result.member ? 999 : result.remaining,
+    } : prev);
     tryExportPDF();
   };
 
@@ -1283,6 +1347,9 @@ export default function App() {
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         onOpenAgreement={openAgreement}
+        referralEnabled={referralEnabled}
+        initialReferralCode={inviteLinkCode || undefined}
+        onRegistered={(code) => { void handleRegistered(code); }}
       />
 
       <ExportModal
@@ -1295,9 +1362,15 @@ export default function App() {
       <ExportConfirmModal
         isOpen={isExportConfirmOpen}
         remaining={appUser?.remainingPdfExports ?? 0}
+        referralEnabled={referralEnabled}
+        onOpenInvite={() => {
+          setIsExportConfirmOpen(false);
+          setDashboardSectionRequest('invite');   // 该 state 在 Task 4 中用于跳个人中心邀请卡片
+          navigate(PAGE_PATH.dashboard);
+        }}
         onConfirm={() => {
           setIsExportConfirmOpen(false);
-          consumeQuotaAndExport();
+          void consumeQuotaAndExport();
         }}
         onClose={() => setIsExportConfirmOpen(false)}
       />
