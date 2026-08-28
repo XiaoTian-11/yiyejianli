@@ -17,29 +17,32 @@ export const generateResumePDF = async (
 
   for (let i = 0; i < pageEls.length; i++) {
     const el = pageEls[i];
-    // 截图时去除内联 transform scale，以原始 794×1123 渲染；pixelRatio 3 放大保证清晰
+    // 截图时不强制 height 1123px，让高度跟随内容实际高度（scrollHeight），
+    // 避免底部出现「模板内容未满页」造成的纯白分层块。
+    // 只固定宽度 794px（A4 宽），transform 重置。
+    const contentHeight = el.scrollHeight;
     const dataUrl = await toPng(el, {
       pixelRatio: 3,
       backgroundColor: '#ffffff',
       style: {
         transform: 'none',
         transformOrigin: 'top left',
-        // 舞台宽高用原始像素值，避免被宿主缩放影响
         width: '794px',
-        height: '1123px',
+        height: `${Math.max(contentHeight, 100)}px`,
       },
       // 跳过打印隐藏元素（页码等）
       filter: (node) => {
         const htmlNode = node as HTMLElement;
         return !(htmlNode.classList && htmlNode.classList.contains('print:hidden'));
       },
-      // 容器查询依赖 A4 舞台的 @container，克隆时保留；跳过外部样式即可
       cacheBust: true,
     });
 
     if (i > 0) pdf.addPage();
-    // 图片按 A4 全页铺满（含边距 0，与原打印一致）
-    pdf.addImage(dataUrl, 'PNG', 0, 0, A4_W_MM, A4_H_MM, undefined, 'FAST');
+    // 图片按 A4 宽铺满，高度按「内容高/794 宽」的原始比例计算（等比缩放），
+    // 底部若不足 297mm 由 PDF 白底自然补齐（正常纸张留白，非分层白块）。
+    const imgHeightMm = A4_W_MM * (contentHeight / 794);
+    pdf.addImage(dataUrl, 'PNG', 0, 0, A4_W_MM, imgHeightMm, undefined, 'FAST');
   }
 
   const blob = pdf.output('blob');

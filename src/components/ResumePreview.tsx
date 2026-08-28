@@ -122,6 +122,7 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, ResumePreviewProps
                   transform: `translateY(${-pageIndex * PAGE_HEIGHT}px)`,
                   transformOrigin: 'top left',
                   width: `${PAGE_WIDTH}px`,
+                  height: `${PAGE_HEIGHT}px`, // 固定舞台高度：h-full/flex-1 模板(Executive/TwoColumn)背景才能铺满，避免内容不足时背景色底部截止产生「分层」白边
                   position: 'absolute',
                   top: 0,
                   left: 0

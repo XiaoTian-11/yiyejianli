@@ -152,7 +152,7 @@ export const TechFocusedTemplate: React.FC<TemplateProps> = ({ data }) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white font-mono p-12 text-slate-800 space-y-8 shadow-xl overflow-hidden print:shadow-none">
+    <div className="flex flex-col bg-white font-mono p-10 text-slate-800 space-y-6 shadow-xl print:shadow-none">
       {/* Name and Title */}
       <header className="space-y-2 border-b-2 border-slate-800 pb-6">
         <ResumePhoto photo={data.personalInfo.photo} fullName={data.personalInfo.fullName} />
