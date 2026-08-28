@@ -21,15 +21,19 @@ import {
 } from 'lucide-react';
 import { SEO } from '../components/SEO';
 import { TemplateMiniature } from '../components/TemplateMiniature';
+import { InviteSection } from '../components/InviteSection';
 import { TemplateId, ResumeData } from '../types';
 
 interface HeroProps {
   onStart: () => void;
   onSelectTemplate?: (templateId: TemplateId) => void;
   data?: ResumeData;
+  referralEnabled?: boolean;   // 活动总开关（关闭则不渲染板块）
+  isLoggedIn?: boolean;        // 是否已登录（CTA 分流）
+  onGoInvite?: () => void;     // 已登录点 CTA → 个人中心邀请卡片
 }
 
-export const LandingPage: React.FC<HeroProps> = ({ onStart, onSelectTemplate }) => {
+export const LandingPage: React.FC<HeroProps> = ({ onStart, onSelectTemplate, referralEnabled, isLoggedIn, onGoInvite }) => {
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [compareTab, setCompareTab] = useState<'spacing' | 'ats' | 'onepage'>('spacing');
 
@@ -409,6 +413,15 @@ export const LandingPage: React.FC<HeroProps> = ({ onStart, onSelectTemplate }) 
           ))}
         </div>
       </section>
+
+      {/* 邀请有礼活动板块（随活动总开关渲染） */}
+      {referralEnabled && (
+        <InviteSection
+          isLoggedIn={isLoggedIn}
+          onStart={onStart}
+          onGoInvite={onGoInvite}
+        />
+      )}
 
       {/* 行业深度定制场景板块 */}
       <section className="py-24 px-6 bg-slate-50/50" id="landing-industry-tailoring">

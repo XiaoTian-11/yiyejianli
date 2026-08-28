@@ -1263,6 +1263,12 @@ export default function App() {
                     setSelectedLandingTemplate(id);
                     navigate(PAGE_PATH.templates);
                   }}
+                  referralEnabled={referralEnabled}
+                  isLoggedIn={!!user}
+                  onGoInvite={() => {
+                    setDashboardSectionRequest('invite');
+                    navigate(PAGE_PATH.dashboard);
+                  }}
                 />
               } />
               <Route path="/templates" element={
