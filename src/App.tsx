@@ -1320,6 +1320,11 @@ export default function App() {
                     }}
                     onGoToTemplates={() => navigate(PAGE_PATH.templates)}
                     onTriggerUpgrade={(reason) => triggerUpgrade(reason || 'limit')}
+                    referralEnabled={referralEnabled}
+                    inviteCode={appUser?.inviteCode || null}
+                    referralStats={referralStats}
+                    dashboardSectionRequest={dashboardSectionRequest}
+                    onClearSectionRequest={() => setDashboardSectionRequest(null)}
                   />
                 </AuthGate>
               } />

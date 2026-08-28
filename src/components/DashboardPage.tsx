@@ -1,29 +1,31 @@
-import React, { useState, Component } from 'react';
+import React, { useState, Component, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  LayoutDashboard, 
-  FileText, 
-  CreditCard, 
-  User as UserIcon, 
-  Settings, 
-  Plus, 
-  ChevronRight, 
-  Star, 
-  Clock, 
+import {
+  LayoutDashboard,
+  FileText,
+  CreditCard,
+  User as UserIcon,
+  Settings,
+  Plus,
+  ChevronRight,
+  Star,
+  Clock,
   CheckCircle2,
   Edit3,
   Edit2,
   Download,
   Trash2,
-  Wallet
+  Wallet,
+  Gift
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { DashboardSection, User as AppUser } from '../types';
+import { DashboardSection, User as AppUser, ReferralStats } from '../types';
 import { ResumeDocument, formatTimeAgo } from '../lib/supabaseService';
 import { ClientOrder, ORDER_STATUS_TEXT, REFUND_STATUS_TEXT } from '../lib/orderService';
 import { PLANS } from '../constants';
 import { SEO } from './SEO';
 import { A4TemplateFrame } from './A4TemplateFrame';
+import { InviteCard } from './InviteCard';
 
 interface DashboardPageProps {
   user: any;
@@ -37,6 +39,11 @@ interface DashboardPageProps {
   onGoToPayment: (planId: string) => void;
   onGoToTemplates: () => void;
   onTriggerUpgrade?: (reason?: string) => void;
+  referralEnabled?: boolean;                    // 活动总开关
+  inviteCode?: string | null;                   // 当前用户邀请码
+  referralStats?: ReferralStats;                // 邀请进度
+  dashboardSectionRequest?: string | null;      // 外部跳转指定 section 的信号（如 'invite'）
+  onClearSectionRequest?: () => void;           // 消费信号后清空
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -50,9 +57,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onRenameResume,
   onGoToPayment,
   onGoToTemplates,
-  onTriggerUpgrade
+  onTriggerUpgrade,
+  referralEnabled,
+  inviteCode,
+  referralStats,
+  dashboardSectionRequest,
+  onClearSectionRequest
 }) => {
   const [activeSection, setActiveSection] = useState<DashboardSection>('resumes');
+
+  // 消费外部跳转信号（如导出弹窗「邀请好友」→ 跳邀请卡片）
+  useEffect(() => {
+    if (dashboardSectionRequest === 'invite') {
+      setActiveSection('invite');
+      onClearSectionRequest?.();
+    }
+  }, [dashboardSectionRequest, onClearSectionRequest]);
   
   // States for rename and delete features
   const [editingResumeId, setEditingResumeId] = useState<string | null>(null);
@@ -123,6 +143,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         return <MemberCenter appUser={appUser} onUpgrade={onGoToPayment} />;
       case 'orders':
         return <OrdersView orders={orders} />;
+      case 'invite':
+        return (
+          <div className="max-w-xl">
+            <InviteCard
+              inviteCode={inviteCode}
+              baseUrl={window.location.origin}
+              stats={referralStats}
+            />
+          </div>
+        );
       default:
         return (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400">
@@ -182,6 +212,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               { id: 'resumes', label: '我的简历', icon: FileText },
               { id: 'members', label: '会员中心', icon: Star },
               { id: 'orders', label: '我的订单', icon: CreditCard },
+              ...(referralEnabled ? [{ id: 'invite', label: '邀请好友', icon: Gift }] : []),
             ].map((item) => {
               const Icon = item.icon;
               const isActive = activeSection === item.id;

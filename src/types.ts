@@ -180,4 +180,4 @@ export interface Plan {
 
 export type Page = 'home' | 'templates' | 'pricing' | 'builder' | 'dashboard' | 'payment';
 
-export type DashboardSection = 'overview' | 'resumes' | 'orders' | 'members' | 'settings';
+export type DashboardSection = 'overview' | 'resumes' | 'orders' | 'members' | 'settings' | 'invite';
