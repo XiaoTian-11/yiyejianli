@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Component } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, 
@@ -23,6 +23,7 @@ import { ResumeDocument, formatTimeAgo } from '../lib/supabaseService';
 import { ClientOrder, ORDER_STATUS_TEXT } from '../lib/orderService';
 import { PLANS } from '../constants';
 import { SEO } from './SEO';
+import { A4TemplateFrame } from './A4TemplateFrame';
 
 interface DashboardPageProps {
   user: any;
@@ -469,7 +470,24 @@ const Overview: React.FC<{
   </div>
 );
 
-const ResumeCard: React.FC<{ 
+// 简历缩略图容错：某份简历数据不完整导致模板渲染崩溃时，单卡片降级为占位块，
+// 不拖垮整个个人中心页面（真实渲染简历内容后必须加这道防线）。
+class ThumbErrorBoundary extends Component<{ children: React.ReactNode; fallback?: React.ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback ?? (
+        <div className="w-full h-full bg-slate-100 flex items-center justify-center">
+          <FileText className="w-8 h-8 text-slate-300" />
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const ResumeCard: React.FC<{
   resume: ResumeDocument, 
   onClick: () => void,
   onRename: (id: string, name: string) => void,
@@ -481,22 +499,15 @@ const ResumeCard: React.FC<{
       className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden group hover:shadow-2xl hover:shadow-slate-200 transition-all hover:-translate-y-1 cursor-pointer flex flex-col justify-between"
     >
       <div className="p-4">
-        <div className="aspect-[3/4] bg-slate-100 rounded-[1.5rem] relative overflow-hidden flex items-center justify-center">
-          {/* Mock Preview Content */}
-          <div className="absolute inset-0 p-4 space-y-2 scale-[0.3] origin-top-left opacity-30">
-            <div className="w-1/2 h-8 bg-black rounded-lg" />
-            <div className="w-3/4 h-4 bg-slate-400 rounded-full" />
-            <div className="w-full h-4 bg-slate-300 rounded-full" />
-            <div className="grid grid-cols-2 gap-4">
-              <div className="aspect-square bg-slate-200 rounded-2xl" />
-              <div className="space-y-2">
-                <div className="w-full h-4 bg-slate-300 rounded-full" />
-                <div className="w-full h-4 bg-slate-300 rounded-full" />
-                <div className="w-1/2 h-4 bg-slate-300 rounded-full" />
-              </div>
-            </div>
-            <div className="w-full h-40 bg-slate-50 rounded-3xl" />
-          </div>
+        <div className="aspect-[3/4] bg-white rounded-[1.5rem] relative overflow-hidden flex items-center justify-center border border-slate-100">
+          {/* 真实简历缩略图：复用 A4TemplateFrame 渲染真实模板（等比缩放 contain） */}
+          <ThumbErrorBoundary>
+            <A4TemplateFrame
+              templateId={(resume.templateId || 'modern') as any}
+              data={resume.data}
+              className="bg-white"
+            />
+          </ThumbErrorBoundary>
 
           <span className="text-slate-400 font-bold text-xs opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full shadow-sm">
             点击进入编辑
