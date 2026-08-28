@@ -11,6 +11,7 @@ import { AuthModal } from './components/AuthModal';
 import { UpgradeModal } from './components/UpgradeModal';
 import { ExportModal } from './components/ExportModal';
 import { ExportConfirmModal } from './components/ExportConfirmModal';
+import { LeaveConfirmModal } from './components/LeaveConfirmModal';
 import { AgreementModal } from './components/AgreementModal';
 import { auth, onAuthStateChanged, signOut } from './lib/supabase';
 import type { User } from '@supabase/supabase-js';
@@ -113,6 +114,16 @@ export default function App() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   // 次费用户导出前的二次确认弹窗（点「继续导出」才扣配额并打印）
   const [isExportConfirmOpen, setIsExportConfirmOpen] = useState(false);
+  // 离开编辑器二次确认弹窗（仅当有未落盘改动时出现）
+  const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
+  // 待执行的离开动作（「保存并离开」/「不保存离开」后执行）
+  const leaveActionRef = useRef<{ type: 'navigate'; to: string } | { type: 'signout' } | null>(null);
+  // 切换简历时待切换的目标简历 id（确认保存后切换过去）
+  const pendingResumeIdRef = useRef<string | null>(null);
+  // 是否有未落盘改动（data 与 lastSavedDataRef 不一致）
+  const hasUnsavedRef = useRef(false);
+  // 自动保存防抖 timer（弹离开确认框时取消，避免确认期间自动保存丢弃的改动）
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isAgreementModalOpen, setIsAgreementModalOpen] = useState(false);
   const [agreementInitialTab, setAgreementInitialTab] = useState<'service' | 'privacy'>('service');
   const [exporting, setExporting] = useState(false);
@@ -297,6 +308,82 @@ export default function App() {
     });
   };
 
+  // 统一离开入口：若当前编辑器有未落盘改动，弹确认框；否则直接执行动作。
+  const requestLeave = (action: { type: 'navigate'; to: string } | { type: 'signout' }) => {
+    if (hasUnsavedRef.current && activeResumeId) {
+      // 取消未决的自动保存 timer，避免确认框打开期间把要丢弃的改动自动存库
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+      leaveActionRef.current = action;
+      setIsLeaveConfirmOpen(true);
+      return;
+    }
+    doLeave(action);
+  };
+
+  // 执行实际离开动作（保存/不保存确认后，或无未保存改动时直接调用）
+  const doLeave = (action: { type: 'navigate'; to: string } | { type: 'signout' }) => {
+    if (action.type === 'signout') {
+      handleSignOut();
+    } else {
+      navigate(action.to);
+    }
+  };
+
+  // 「保存并离开」：先立即保存，再执行待办动作（可能是切换简历）
+  const onLeaveSave = async () => {
+    setIsLeaveConfirmOpen(false);
+    // 传入当前 data，确保保存的是最新改动（不用等 dataRef 异步同步）
+    await performSave(data);
+    // 若是切换简历：保存当前后切到目标简历
+    if (pendingResumeIdRef.current) {
+      const targetId = pendingResumeIdRef.current;
+      pendingResumeIdRef.current = null;
+      const res = resumes.find(r => r.id === targetId);
+      if (res) {
+        setActiveResumeId(targetId);
+        setData(res.data);
+        setTemplateId(res.templateId || 'modern');
+        lastSavedDataRef.current = JSON.stringify(res.data);
+        hasUnsavedRef.current = false;
+      }
+      return; // 已在 builder，无需额外 navigate
+    }
+    const a = leaveActionRef.current;
+    leaveActionRef.current = null;
+    if (a) doLeave(a);
+  };
+
+  // 「不保存离开」：恢复最后已保存版本（丢弃本次改动），再执行待办动作
+  const onLeaveDiscard = () => {
+    setIsLeaveConfirmOpen(false);
+    // 若是切换简历：直接切到目标简历，当前改动丢弃
+    if (pendingResumeIdRef.current) {
+      const targetId = pendingResumeIdRef.current;
+      pendingResumeIdRef.current = null;
+      const res = resumes.find(r => r.id === targetId);
+      if (res) {
+        setActiveResumeId(targetId);
+        setData(res.data);
+        setTemplateId(res.templateId || 'modern');
+        lastSavedDataRef.current = JSON.stringify(res.data);
+        hasUnsavedRef.current = false;
+      }
+      return;
+    }
+    const res = resumes.find(r => r.id === activeResumeId);
+    if (res) {
+      setData(res.data);
+      lastSavedDataRef.current = JSON.stringify(res.data);
+    }
+    hasUnsavedRef.current = false;
+    const a = leaveActionRef.current;
+    leaveActionRef.current = null;
+    if (a) doLeave(a);
+  };
+
   // Use a ref to track the last saved data to prevent infinite loops if loading triggers a save
   const lastSavedDataRef = useRef<string>('');
 
@@ -314,11 +401,12 @@ export default function App() {
   }, []);
 
   // 执行保存：内容与上次落盘一致则跳过；先占位 lastSavedDataRef 防并发重复保存。
-  const performSave = async () => {
+  // overrideData 供「保存并离开」等需要立即保存当前最新 data 的场景传入。
+  const performSave = async (overrideData?: ResumeData) => {
     const uid = user?.uid;
     const rid = activeResumeId;
     if (!uid || !rid) return;
-    const dataToSave = dataRef.current;
+    const dataToSave = overrideData || dataRef.current;
     const dataStr = JSON.stringify(dataToSave);
     if (dataStr === lastSavedDataRef.current) return;
     lastSavedDataRef.current = dataStr;
@@ -334,6 +422,7 @@ export default function App() {
       // Update local list
       setResumes(prev => prev.map(r => r.id === rid ? { ...r, data: dataToSave, templateId, updatedAt: new Date().toISOString() } : r));
 
+      hasUnsavedRef.current = false;
       if (mountedRef.current) {
         setSaveStatus('saved');
         setTimeout(() => { if (mountedRef.current) setSaveStatus('idle'); }, 2000);
@@ -342,6 +431,7 @@ export default function App() {
       if (mountedRef.current) setSaveStatus('error');
       // 失败则放行下次重试
       lastSavedDataRef.current = '';
+      hasUnsavedRef.current = true;
     }
   };
 
@@ -349,26 +439,57 @@ export default function App() {
     if (!user || !activeResumeId) return;
 
     const dataStr = JSON.stringify(data);
-    if (dataStr === lastSavedDataRef.current) return;
-
+    if (dataStr === lastSavedDataRef.current) {
+      hasUnsavedRef.current = false;
+      return;
+    }
+    // 有未落盘改动：标记待确认，1 秒防抖自动保存
+    hasUnsavedRef.current = true;
     const timer = setTimeout(performSave, 1000);
+    // 记录 timer，供「离开确认弹窗」打开时取消（避免确认期间自动保存把要丢弃的改动存进去）
+    autoSaveTimerRef.current = timer;
 
     return () => {
       clearTimeout(timer);
-      // cleanup flush：切换简历/登出等导致 effect 重置时，未落盘的改动立即保存
-      //（fire-and-forget，cleanup 不能 async）。切简历场景下 activeResumeId
-      // 仍是旧值（state 批处理，cleanup 跑在 commit 前），旧改动恰好存回旧简历。
-      void performSave();
+      if (autoSaveTimerRef.current === timer) autoSaveTimerRef.current = null;
+      // 离开编辑器/切换简历时的保存由「离开确认弹窗」控制（requestLeave），
+      // 这里不再自动 flush，避免静默保存未确认的改动。
     };
   }, [data, user, activeResumeId]);
+
+  // 浏览器刷新/关闭标签页兜底：有未落盘改动时提示（无法完全拦截，仅警告）
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedRef.current) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
 
   const handleEditResume = (id: string) => {
     const res = resumes.find(r => r.id === id);
     if (res) {
+      // 切换简历：若当前有未落盘改动且目标简历不同 → 先确认
+      if (hasUnsavedRef.current && activeResumeId && activeResumeId !== id) {
+        // 取消未决的自动保存 timer
+        if (autoSaveTimerRef.current) {
+          clearTimeout(autoSaveTimerRef.current);
+          autoSaveTimerRef.current = null;
+        }
+        leaveActionRef.current = { type: 'navigate', to: PAGE_PATH.builder };
+        setIsLeaveConfirmOpen(true);
+        // 保存后 handleEditResume 需重新以 id 为目标——用 pendingResumeIdRef 记录
+        pendingResumeIdRef.current = id;
+        return;
+      }
       setActiveResumeId(id);
       setData(res.data);
       setTemplateId(res.templateId || 'modern');
       lastSavedDataRef.current = JSON.stringify(res.data);
+      hasUnsavedRef.current = false;
       navigate(PAGE_PATH.builder);
     }
   };
@@ -672,7 +793,7 @@ export default function App() {
           <header className="flex items-center justify-between px-2">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => navigate(PAGE_PATH.dashboard)}
+                onClick={() => requestLeave({ type: 'navigate', to: PAGE_PATH.dashboard })}
                 className="p-2 text-slate-400 hover:text-slate-900 bg-white shadow-sm border border-slate-100 rounded-xl transition-all hover:scale-105 active:scale-95"
               >
                 <ChevronLeft className="w-5 h-5" />
@@ -688,8 +809,8 @@ export default function App() {
                 onClick={() => setActiveTab('edit')}
                 className={cn(
                   'flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
-                  activeTab === 'edit' 
-                    ? 'bg-white text-blue-600 shadow-sm' 
+                  activeTab === 'edit'
+                    ? 'bg-white text-blue-600 shadow-sm'
                     : 'text-slate-500 hover:text-slate-700'
                 )}
               >
@@ -700,8 +821,8 @@ export default function App() {
                 onClick={() => setActiveTab('preview')}
                 className={cn(
                   'flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all',
-                  activeTab === 'preview' 
-                    ? 'bg-white text-blue-600 shadow-sm' 
+                  activeTab === 'preview'
+                    ? 'bg-white text-blue-600 shadow-sm'
                     : 'text-slate-500 hover:text-slate-700'
                 )}
               >
@@ -710,7 +831,11 @@ export default function App() {
               </button>
             </div>
           </header>
-          
+
+          {/* 编辑区独立滚动容器：桌面端固定高度 + overflow-y-auto，右侧预览区固定可见；
+              移动端（<lg）保持单列 Tab 切换，不套固定高度 */}
+          <div className="space-y-6 lg:max-h-[calc(100vh-230px)] lg:overflow-y-auto lg:pr-1 lg:scrollbar-hide">
+
           {/* Collapsible Resume Scoring & Diagnosis Panel */}
           <div className="bg-white/80 backdrop-blur-md rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden p-1">
             <button
@@ -753,12 +878,13 @@ export default function App() {
           </div>
 
           <div className="glass rounded-[2rem] p-2 overflow-hidden shadow-2xl shadow-slate-200/50">
-            <ResumeEditor 
-              data={data} 
-              onChange={setData} 
-              userTier={appUser?.tier || 'guest'} 
+            <ResumeEditor
+              data={data}
+              onChange={setData}
+              userTier={appUser?.tier || 'guest'}
               onTriggerUpgrade={(reason) => triggerUpgrade(reason || 'sections')}
             />
+          </div>
           </div>
         </div>
 
@@ -875,7 +1001,7 @@ export default function App() {
               {user ? (
                 <div className="flex items-center gap-3 ml-2">
                   <button
-                    onClick={() => navigate(PAGE_PATH.dashboard)}
+                    onClick={() => requestLeave({ type: 'navigate', to: PAGE_PATH.dashboard })}
                     className={cn(
                       "flex items-center gap-2 px-3 py-1.5 border rounded-xl transition-all",
                       pathname === PAGE_PATH.dashboard
@@ -889,7 +1015,7 @@ export default function App() {
                     </span>
                   </button>
                   <button
-                    onClick={handleSignOut}
+                    onClick={() => requestLeave({ type: 'signout' })}
                     className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
                     title="退出登录"
                   >
@@ -963,15 +1089,15 @@ export default function App() {
                 </div>
                 
                 <div className="grid grid-cols-2 gap-2 pt-1">
-                  <button 
-                    onClick={() => { navigate(PAGE_PATH.dashboard); setMobileMenuOpen(false); }}
+                  <button
+                    onClick={() => { requestLeave({ type: 'navigate', to: PAGE_PATH.dashboard }); setMobileMenuOpen(false); }}
                     className="py-2.5 bg-white border border-slate-200 text-slate-705 hover:text-slate-900 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all flex items-center justify-center gap-1"
                   >
                     <UserIcon className="w-3.5 h-3.5 text-slate-500" />
                     <span>个人中心</span>
                   </button>
-                  <button 
-                    onClick={() => { handleSignOut(); setMobileMenuOpen(false); }} 
+                  <button
+                    onClick={() => { requestLeave({ type: 'signout' }); setMobileMenuOpen(false); }}
                     className="py-2.5 bg-red-50 hover:bg-red-100 border border-red-100 text-red-600 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1"
                   >
                     <LogOut className="w-3.5 h-3.5" />
@@ -1125,6 +1251,14 @@ export default function App() {
           consumeQuotaAndExport();
         }}
         onClose={() => setIsExportConfirmOpen(false)}
+      />
+
+      <LeaveConfirmModal
+        isOpen={isLeaveConfirmOpen}
+        resumeName={resumes.find(r => r.id === activeResumeId)?.name}
+        onSave={() => void onLeaveSave()}
+        onDiscard={onLeaveDiscard}
+        onCancel={() => { setIsLeaveConfirmOpen(false); pendingResumeIdRef.current = null; }}
       />
 
       <UpgradeModal

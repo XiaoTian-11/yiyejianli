@@ -500,12 +500,14 @@ const ResumeCard: React.FC<{
     >
       <div className="p-4">
         <div className="aspect-[3/4] bg-white rounded-[1.5rem] relative overflow-hidden flex items-center justify-center border border-slate-100">
-          {/* 真实简历缩略图：复用 A4TemplateFrame 渲染真实模板（等比缩放 contain） */}
+          {/* 真实简历缩略图：复用 A4TemplateFrame 渲染真实模板（等比缩放 contain）。
+              absolute inset-0 让缩略图铺满并作为背景层，hover 按钮与 Tags 作为
+              前景 absolute 覆盖在其上，保证居中/定位正确。 */}
           <ThumbErrorBoundary>
             <A4TemplateFrame
               templateId={(resume.templateId || 'modern') as any}
               data={resume.data}
-              className="bg-white"
+              className="absolute inset-0 bg-white"
             />
           </ThumbErrorBoundary>
 
