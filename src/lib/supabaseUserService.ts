@@ -11,6 +11,9 @@ function rowToUser(data: any): User {
     remainingPngExports: data.remaining_png_exports ?? 0,
     remainingAtsChecks: data.remaining_ats_checks ?? 0,
     status: data.status === 'disabled' ? 'disabled' : 'active',
+    inviteCode: data.invite_code || undefined,
+    invitedCount: data.invited_count ?? 0,
+    referralBonusCount: data.referral_bonus_count ?? 0,
   };
 }
 

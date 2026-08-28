@@ -142,6 +142,23 @@ export interface User {
   remainingAtsChecks: number;
   /** 账户状态：disabled 表示已被管理员禁用，登录后将被自动登出 */
   status?: 'active' | 'disabled';
+  /** 用户专属邀请码（6 位） */
+  inviteCode?: string;
+  /** 已邀请人数 */
+  invitedCount?: number;
+  /** 已获邀请奖励次数（0-2） */
+  referralBonusCount?: number;
+}
+
+/** 邀请进度（个人中心卡片展示用） */
+export interface ReferralStats {
+  invitedCount: number;      // 已邀请人数
+  bonusCount: number;        // 已获得邀请奖励次数（0-2）
+}
+
+/** 邀请奖励活动配置（总开关） */
+export interface AppConfig {
+  referralEnabled: boolean;  // 活动总开关
 }
 
 export type PlanType = 'single_export' | 'week' | 'month' | 'quarter' | 'year' | 'lifetime' | 'student_year';
