@@ -150,3 +150,18 @@ export async function fetchMyReferralStats(): Promise<ReferralStats> {
     return { invitedCount: 0, bonusCount: 0 };
   }
 }
+
+/** 惰性生成/获取当前用户邀请码（历史用户迁移前无码，登录后调用补生成） */
+export async function ensureMyInviteCode(): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.rpc('ensure_my_invite_code');
+    if (error) {
+      console.warn('ensureMyInviteCode error:', error);
+      return null;
+    }
+    return data?.invite_code || null;
+  } catch (err) {
+    console.warn('ensureMyInviteCode failed:', err);
+    return null;
+  }
+}

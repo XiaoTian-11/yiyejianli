@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Gift, Copy, Check, Users as UsersIcon, Share2 } from 'lucide-react';
 import { buildInviteLink } from '../lib/referralService';
+import { InviteHowItWorks } from './InviteHowItWorks';
 import type { ReferralStats } from '../types';
 
 interface InviteCardProps {
@@ -89,7 +90,7 @@ export const InviteCard: React.FC<InviteCardProps> = ({ inviteCode, baseUrl = ''
         </div>
       )}
 
-      <div className="flex items-center justify-between rounded-2xl bg-white/70 border border-slate-100 px-4 py-3">
+      <div className="flex items-center justify-between rounded-2xl bg-white/70 border border-slate-100 px-4 py-3 mb-6">
         <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
           <UsersIcon className="w-4 h-4 text-slate-400" />
           已邀请 {s.invitedCount} 位好友
@@ -97,6 +98,14 @@ export const InviteCard: React.FC<InviteCardProps> = ({ inviteCode, baseUrl = ''
         <div className="text-xs font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
           已获得 {s.bonusCount}/2 次免费导出
         </div>
+      </div>
+
+      {/* 活动玩法说明（与首页保持一致） */}
+      <div className="border-t border-slate-100 pt-5">
+        <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 text-center">
+          玩法说明
+        </h4>
+        <InviteHowItWorks />
       </div>
     </div>
   );

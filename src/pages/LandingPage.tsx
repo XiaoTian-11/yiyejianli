@@ -52,6 +52,22 @@ export const LandingPage: React.FC<HeroProps> = ({ onStart, onSelectTemplate, re
         <div className="absolute top-[40%] left-[25%] w-[35%] h-[35%] bg-emerald-50/20 blur-[100px] rounded-full" />
       </div>
 
+      {/* 邀请活动顶部横幅（受活动总开关控制） */}
+      {referralEnabled && (
+        <div className="relative z-10 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-white">
+          <div className="max-w-7xl mx-auto px-6 py-2.5 flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold">
+            <Award className="w-4 h-4 shrink-0" />
+            <span className="truncate">邀请好友注册，你和 TA 各得 1 次免费导出（每人最多 2 次）</span>
+            <button
+              onClick={isLoggedIn ? onGoInvite : onStart}
+              className="shrink-0 ml-2 px-3 py-1 rounded-full bg-white/20 hover:bg-white/30 border border-white/40 text-white text-xs font-bold transition-all"
+            >
+              {isLoggedIn ? '立即邀请' : '立即参与'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Hero Section */}
       <section className="pt-24 pb-20 px-6">
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
