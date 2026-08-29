@@ -280,6 +280,11 @@ export default function App() {
               if (downgraded) {
                 console.log('Membership expired, auto-downgraded to free');
               }
+              // 历史用户惰性生成邀请码（迁移前注册的用户 invite_code 为 NULL）：
+              // 登录后补生成并写回 appUser，个人中心邀请卡片即可展示链接/码。
+              void ensureMyInviteCode().then((code) => {
+                if (code) setAppUser(prev => prev ? { ...prev, inviteCode: code } : prev);
+              });
               handlePostLoginJump();
               return;
             }
