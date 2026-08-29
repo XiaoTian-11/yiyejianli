@@ -23,7 +23,7 @@ import {
   readRefParam, storeReferralCode, getStoredReferralCode,
   fetchAppConfig, grantReferralReward, retryPendingReward,
   deriveReferralStats, fetchMyReferralStats, consumePdfQuota,
-  ensureMyInviteCode,
+  ensureMyInviteCode, fetchMyReferralHistory,
 } from './lib/referralService';
 import { DashboardPage } from './components/DashboardPage';
 import { PaymentPage } from './components/PaymentPage';
@@ -32,7 +32,7 @@ import { TemplatesPage } from './pages/TemplatesPage';
 import { PricingPage } from './pages/PricingPage';
 import { INITIAL_DATA } from './constants';
 import { INDUSTRY_SAMPLES, TEMPLATE_INDUSTRY_MAP } from './constants/industrySamples';
-import { ResumeData, TemplateId, Page, User as AppUser, PlanType, AppConfig, ReferralStats } from './types';
+import { ResumeData, TemplateId, Page, User as AppUser, PlanType, AppConfig, ReferralStats, ReferralRecord } from './types';
 import { cn } from './lib/utils';
 import { getPlanByType, calculateRenewedMemberUntil, deriveCurrentPlan } from './lib/pricing';
 import { PAGE_PATH, isProtectedPath } from './lib/routes';
@@ -112,6 +112,7 @@ export default function App() {
   const [referralEnabled, setReferralEnabled] = useState(false);   // 活动总开关
   const [inviteLinkCode, setInviteLinkCode] = useState<string | null>(null); // 来自 URL 的邀请码
   const [referralStats, setReferralStats] = useState<ReferralStats>({ invitedCount: 0, bonusCount: 0 });
+  const [referralHistory, setReferralHistory] = useState<ReferralRecord[]>([]);
   const [dashboardSectionRequest, setDashboardSectionRequest] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [selectedPlanId, setSelectedPlanId] = useState<string>('month');
@@ -180,8 +181,14 @@ export default function App() {
     if (result.rewarded && uid) {
       const { user: fresh } = await getUser(uid);
       if (fresh) setAppUser({ ...fresh, email: user.email || fresh.email });
-      void fetchMyReferralStats().then(setReferralStats);
+      refreshReferralData();
     }
+  };
+
+  // 刷新邀请进度 + 获得奖励记录（登录后 / 邀请成功后 / 进入邀请页时调用）
+  const refreshReferralData = () => {
+    void fetchMyReferralStats().then(setReferralStats);
+    void fetchMyReferralHistory().then(setReferralHistory);
   };
 
   const triggerUpgrade = (reason: string) => {
@@ -280,6 +287,8 @@ export default function App() {
               if (downgraded) {
                 console.log('Membership expired, auto-downgraded to free');
               }
+              // 邀请奖励：登录后拉取邀请进度（此分支提前 return，必须在此拉取，否则后面的 fetch 不执行）
+              refreshReferralData();
               // 历史用户惰性生成邀请码（迁移前注册的用户 invite_code 为 NULL）：
               // 登录后补生成并写回 appUser，个人中心邀请卡片即可展示链接/码。
               void ensureMyInviteCode().then((code) => {
@@ -306,12 +315,12 @@ export default function App() {
         // 邀请奖励：登录后拉取邀请进度 + 幂等重试未完成的发放（注册后断网兜底）。
         // 不依赖 referralEnabled 闭包（onAuthStateChanged effect 依赖数组为 []，
         // 捕获的是初始值）；改用「是否有暂存邀请码 + 总是拉进度」判断。
-        void fetchMyReferralStats().then(setReferralStats);
+        refreshReferralData();
         if (getStoredReferralCode()) {
           void retryPendingReward().then(() => {
             void getUser(normalizedUser.uid).then(({ user: fresh }) => {
               if (fresh) setAppUser({ ...fresh, email: currentUser.email || fresh.email });
-              void fetchMyReferralStats().then(setReferralStats);
+              refreshReferralData();
             });
           });
         }
@@ -1340,8 +1349,10 @@ export default function App() {
                     referralEnabled={referralEnabled}
                     inviteCode={appUser?.inviteCode || null}
                     referralStats={referralStats}
+                    referralHistory={referralHistory}
                     dashboardSectionRequest={dashboardSectionRequest}
                     onClearSectionRequest={() => setDashboardSectionRequest(null)}
+                    onRefreshReferral={refreshReferralData}
                   />
                 </AuthGate>
               } />

@@ -156,6 +156,18 @@ export interface ReferralStats {
   bonusCount: number;        // 已获得邀请奖励次数（0-2）
 }
 
+/** 邀请记录（个人中心「获得奖励记录」列表项） */
+export interface ReferralRecord {
+  id: number;
+  inviteeEmail: string;      // 被邀请人邮箱
+  inviteCode: string;        // 使用的邀请码
+  inviterBonus: number;      // 本次邀请人是否获得奖励（0/1）
+  deviceSuspect: boolean;    // 是否疑似同设备马甲
+  status: 'granted' | 'revoked'; // 状态
+  createdAt: string;         // 建立时间
+  revokedAt?: string | null; // 撤销时间
+}
+
 /** 邀请奖励活动配置（总开关） */
 export interface AppConfig {
   referralEnabled: boolean;  // 活动总开关

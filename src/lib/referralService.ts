@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { ReferralStats, AppConfig } from '../types';
+import type { ReferralStats, AppConfig, ReferralRecord } from '../types';
 
 /** localStorage key：用户点邀请链接带 ?ref=CODE 进入时暂存，注册时预填 */
 const REFERRAL_CODE_KEY = 'referral_code';
@@ -163,5 +163,30 @@ export async function ensureMyInviteCode(): Promise<string | null> {
   } catch (err) {
     console.warn('ensureMyInviteCode failed:', err);
     return null;
+  }
+}
+
+/** 拉取当前用户作为邀请人的邀请记录列表（个人中心「获得奖励记录」） */
+export async function fetchMyReferralHistory(): Promise<ReferralRecord[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_my_referral_history');
+    if (error) {
+      console.warn('fetchMyReferralHistory error:', error);
+      return [];
+    }
+    if (!Array.isArray(data)) return [];
+    return data.map((r: any) => ({
+      id: Number(r.id),
+      inviteeEmail: r.invitee_email || '',
+      inviteCode: r.invite_code || '',
+      inviterBonus: Number(r.inviter_bonus) || 0,
+      deviceSuspect: Boolean(r.device_suspect),
+      status: r.status === 'revoked' ? 'revoked' : 'granted',
+      createdAt: r.created_at,
+      revokedAt: r.revoked_at ?? null,
+    }));
+  } catch (err) {
+    console.warn('fetchMyReferralHistory failed:', err);
+    return [];
   }
 }

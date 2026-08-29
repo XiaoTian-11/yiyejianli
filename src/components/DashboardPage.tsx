@@ -19,7 +19,7 @@ import {
   Gift
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { DashboardSection, User as AppUser, ReferralStats } from '../types';
+import { DashboardSection, User as AppUser, ReferralStats, ReferralRecord } from '../types';
 import { ResumeDocument, formatTimeAgo } from '../lib/supabaseService';
 import { ClientOrder, ORDER_STATUS_TEXT, REFUND_STATUS_TEXT } from '../lib/orderService';
 import { PLANS } from '../constants';
@@ -42,8 +42,10 @@ interface DashboardPageProps {
   referralEnabled?: boolean;                    // 活动总开关
   inviteCode?: string | null;                   // 当前用户邀请码
   referralStats?: ReferralStats;                // 邀请进度
+  referralHistory?: ReferralRecord[];           // 获得奖励记录
   dashboardSectionRequest?: string | null;      // 外部跳转指定 section 的信号（如 'invite'）
   onClearSectionRequest?: () => void;           // 消费信号后清空
+  onRefreshReferral?: () => void;               // 进入邀请 section 时刷新数据
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -61,8 +63,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   referralEnabled,
   inviteCode,
   referralStats,
+  referralHistory,
   dashboardSectionRequest,
-  onClearSectionRequest
+  onClearSectionRequest,
+  onRefreshReferral
 }) => {
   const [activeSection, setActiveSection] = useState<DashboardSection>('resumes');
 
@@ -73,6 +77,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       onClearSectionRequest?.();
     }
   }, [dashboardSectionRequest, onClearSectionRequest]);
+
+  // 进入邀请 section 时刷新数据（邀请成功后回到本页能看到最新计数/记录）
+  useEffect(() => {
+    if (activeSection === 'invite') {
+      onRefreshReferral?.();
+    }
+  }, [activeSection, onRefreshReferral]);
   
   // States for rename and delete features
   const [editingResumeId, setEditingResumeId] = useState<string | null>(null);
@@ -150,6 +161,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               inviteCode={inviteCode}
               baseUrl={window.location.origin}
               stats={referralStats}
+              history={referralHistory}
             />
           </div>
         );
