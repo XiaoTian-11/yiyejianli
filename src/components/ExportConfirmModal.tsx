@@ -10,6 +10,10 @@ interface ExportConfirmModalProps {
   onConfirm: () => void;
   /** 「取消」/点遮罩/点 X */
   onClose: () => void;
+  /** 活动总开关（开启且额度 0 时展示邀请引导） */
+  referralEnabled?: boolean;
+  /** 点邀请引导 → 跳个人中心邀请卡片 */
+  onOpenInvite?: () => void;
 }
 
 /**
@@ -23,6 +27,8 @@ export const ExportConfirmModal: React.FC<ExportConfirmModalProps> = ({
   remaining,
   onConfirm,
   onClose,
+  referralEnabled,
+  onOpenInvite,
 }) => {
   return (
     <AnimatePresence>
@@ -76,6 +82,16 @@ export const ExportConfirmModal: React.FC<ExportConfirmModalProps> = ({
                   {remaining} 次
                 </span>
               </div>
+
+              {remaining === 0 && referralEnabled && (
+                <button
+                  onClick={onOpenInvite}
+                  className="mt-3 w-full rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left hover:bg-amber-100/70 transition-colors"
+                >
+                  <p className="text-xs font-bold text-amber-700">剩余 0 次？邀请好友即可免费获得导出额度</p>
+                  <p className="text-[10px] text-amber-600 mt-0.5">好友注册成功，你和 TA 各得 1 次免费导出（每人最多 2 次）→</p>
+                </button>
+              )}
             </div>
 
             {/* Footer */}

@@ -11,6 +11,9 @@ function rowToUser(data: any): User {
     remainingPngExports: data.remaining_png_exports ?? 0,
     remainingAtsChecks: data.remaining_ats_checks ?? 0,
     status: data.status === 'disabled' ? 'disabled' : 'active',
+    inviteCode: data.invite_code || undefined,
+    invitedCount: data.invited_count ?? 0,
+    referralBonusCount: data.referral_bonus_count ?? 0,
   };
 }
 
@@ -58,7 +61,9 @@ export async function getUser(userId: string): Promise<{ user: User | null; erro
 }
 
 /**
- * 更新用户会员信息
+ * 更新用户会员信息。
+ * ⚠️ RLS 已收紧（用户不可 UPDATE 自身行），此函数仅能由「服务端/后台」使用；
+ * 前端如需改配额/权益，一律走对应 RPC（consume_quota / grant_referral_reward / complete_payment_order）。
  */
 export async function updateUser(
   userId: string,

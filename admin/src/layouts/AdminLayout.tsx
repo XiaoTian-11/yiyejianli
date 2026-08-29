@@ -4,6 +4,7 @@ import {
   Users,
   ShoppingCart,
   FileText,
+  Settings,
   LogOut,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -15,6 +16,7 @@ const NAV_ITEMS = [
   { to: '/users', label: '用户管理', icon: Users, end: false },
   { to: '/orders', label: '订单管理', icon: ShoppingCart, end: false },
   { to: '/resumes', label: '简历管理', icon: FileText, end: false },
+  { to: '/settings', label: '系统设置', icon: Settings, end: false },
 ];
 
 export function AdminLayout() {

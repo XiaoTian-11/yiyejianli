@@ -167,6 +167,47 @@ router.get('/stats/orders-trend', requireAdmin, async (req: Request, res: Respon
   }
 });
 
+// ── 系统配置（邀请活动总开关）──────────────────────────────────────────────
+
+/** GET /config — 读活动开关（供后台设置页展示） */
+router.get('/config', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const admin = getAdminClient();
+    const { data, error } = await admin.from('app_config').select('*').eq('key', 'referral_activity').maybeSingle();
+    if (error && !/does not exist/.test(error.message || '')) {
+      return res.status(400).json({ error: { code: 'DB_READ', message: `读取配置失败: ${error.message}` } });
+    }
+    res.json({ referral_enabled: Boolean(data?.value?.enabled) });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+/** PUT /config — 写活动开关 body: { referral_enabled: boolean } */
+router.put('/config', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const admin = getAdminClient();
+    const enabled = Boolean(req.body?.referral_enabled);
+    const operatorId = (req as Request & { adminUser?: { id?: string } }).adminUser?.id;
+    const { data, error } = await admin
+      .from('app_config')
+      .upsert({
+        key: 'referral_activity',
+        value: { enabled },
+        updated_at: new Date().toISOString(),
+        updated_by: operatorId || null,
+      })
+      .select()
+      .maybeSingle();
+    if (error) {
+      return res.status(400).json({ error: { code: 'DB_WRITE', message: `更新配置失败: ${error.message}` } });
+    }
+    res.json({ referral_enabled: Boolean(data?.value?.enabled) });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
 // ── 用户管理 ───────────────────────────────────────────────────────────────
 
 router.get('/users', requireAdmin, async (req: Request, res: Response) => {
@@ -195,7 +236,27 @@ router.get('/users', requireAdmin, async (req: Request, res: Response) => {
         .json({ error: { code: 'DB_READ', message: `查询用户失败: ${result.error.message}` } });
     }
 
-    res.json({ items: result.data || [], total: result.count || 0, page, pageSize });
+    // 批量补邀请统计（referrals 表聚合：被邀请人数 + 邀请人已获奖励次数）
+    const userIds = (result.data || []).map((u) => u.id);
+    const inviteMap = new Map<string, { invited: number; bonus: number }>();
+    if (userIds.length > 0) {
+      const { data: refs } = await admin
+        .from('referrals')
+        .select('inviter_id, inviter_bonus, status');
+      (refs || []).forEach((r) => {
+        const cur = inviteMap.get(r.inviter_id) || { invited: 0, bonus: 0 };
+        cur.invited += 1;
+        if (r.inviter_bonus === 1 && r.status === 'granted') cur.bonus += 1;
+        inviteMap.set(r.inviter_id, cur);
+      });
+    }
+    const items = (result.data || []).map((u) => ({
+      ...u,
+      invited_count: inviteMap.get(u.id)?.invited || 0,
+      referral_bonus_count: inviteMap.get(u.id)?.bonus || 0,
+    }));
+
+    res.json({ items, total: result.count || 0, page, pageSize });
   } catch (err) {
     handleError(res, err);
   }
@@ -546,6 +607,56 @@ router.get('/resumes', requireAdmin, async (req: Request, res: Response) => {
       user_email: emailMap.get(r.user_id) || null,
     }));
     res.json({ items, total, page, pageSize });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// ── 邀请奖励 ───────────────────────────────────────────────────────────────
+
+/** GET /users/:id/referrals — 某用户的邀请关系明细 */
+router.get('/users/:id/referrals', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const admin = getAdminClient();
+    const { data, error } = await admin
+      .from('referrals')
+      .select('*')
+      .eq('inviter_id', req.params.id)
+      .order('created_at', { ascending: false });
+    if (error) {
+      if (/does not exist/.test(error.message || '')) return res.json({ items: [] });
+      return res.status(400).json({ error: { code: 'DB_READ', message: `查询邀请明细失败: ${error.message}` } });
+    }
+    // 附带被邀请人邮箱
+    const ids = Array.from(new Set((data || []).map((r) => r.invitee_id).filter(Boolean)));
+    const emailMap = new Map<string, string>();
+    if (ids.length > 0) {
+      const { data: users } = await admin.from('users').select('id,email').in('id', ids);
+      (users || []).forEach((u) => { if (u.email) emailMap.set(u.id, u.email); });
+    }
+    const items = (data || []).map((r) => ({
+      ...r,
+      invitee_email: emailMap.get(r.invitee_id) || null,
+    }));
+    res.json({ items });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+/** POST /referrals/:id/revoke — 撤销一条邀请奖励（回滚双方额度） */
+router.post('/referrals/:id/revoke', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const admin = getAdminClient();
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: { code: 'VALIDATION', message: '无效的邀请记录 ID' } });
+    }
+    const { data, error } = await admin.rpc('revoke_referral_bonus', { p_referral_id: id });
+    if (error) {
+      return res.status(400).json({ error: { code: 'DB_WRITE', message: `撤销失败: ${error.message}` } });
+    }
+    res.json(data);
   } catch (err) {
     handleError(res, err);
   }
