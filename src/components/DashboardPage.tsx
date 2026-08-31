@@ -1,4 +1,4 @@
-import React, { useState, Component, useEffect } from 'react';
+import React, { useState, Component, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   LayoutDashboard,
@@ -78,10 +78,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }
   }, [dashboardSectionRequest, onClearSectionRequest]);
 
-  // 进入邀请 section 时刷新数据（邀请成功后回到本页能看到最新计数/记录）
+  // 进入邀请 section 时刷新数据（邀请成功后回到本页能看到最新计数/记录）。
+  // 用 ref 记录上次刷新的 section，仅当切换到 invite 时触发一次，避免依赖函数引用导致的重复刷新。
+  const lastRefreshedSectionRef = useRef<DashboardSection | null>(null);
   useEffect(() => {
-    if (activeSection === 'invite') {
+    if (activeSection === 'invite' && lastRefreshedSectionRef.current !== 'invite') {
+      lastRefreshedSectionRef.current = 'invite';
       onRefreshReferral?.();
+    }
+    if (activeSection !== 'invite') {
+      lastRefreshedSectionRef.current = activeSection;
     }
   }, [activeSection, onRefreshReferral]);
   

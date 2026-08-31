@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate, Routes, Route, Navigate } from 'react-router-dom';
 import { Download, FileText, Layout, Eye, Settings2, Github, Award, Menu, X, LogOut, User as UserIcon, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { generateResumePDF, downloadBlob } from './lib/pdfExport';
@@ -13,6 +13,7 @@ import { ExportModal } from './components/ExportModal';
 import { ExportConfirmModal } from './components/ExportConfirmModal';
 import { LeaveConfirmModal } from './components/LeaveConfirmModal';
 import { AgreementModal } from './components/AgreementModal';
+import { ReferralWelcomeModal } from './components/ReferralWelcomeModal';
 import { auth, onAuthStateChanged, signOut } from './lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import { saveResume, getResume, getResumesList, saveResumeWithId, deleteResume, renameResume, createNewResume, ResumeDocument } from './lib/supabaseService';
@@ -113,6 +114,8 @@ export default function App() {
   const [inviteLinkCode, setInviteLinkCode] = useState<string | null>(null); // 来自 URL 的邀请码
   const [referralStats, setReferralStats] = useState<ReferralStats>({ invitedCount: 0, bonusCount: 0 });
   const [referralHistory, setReferralHistory] = useState<ReferralRecord[]>([]);
+  // 被邀请新用户注册成功后的奖励欢迎弹窗
+  const [isReferralWelcomeOpen, setIsReferralWelcomeOpen] = useState(false);
   const [dashboardSectionRequest, setDashboardSectionRequest] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [selectedPlanId, setSelectedPlanId] = useState<string>('month');
@@ -177,6 +180,10 @@ export default function App() {
     if (!code) return;
     const result = await grantReferralReward(code);
     if (result.rewarded || result.error) storeReferralCode(null);
+    if (result.rewarded && !result.already) {
+      // 首次发放成功：弹欢迎窗引导新用户去模板中心
+      setIsReferralWelcomeOpen(true);
+    }
     const uid = user?.uid || user?.id;
     if (result.rewarded && uid) {
       const { user: fresh } = await getUser(uid);
@@ -185,11 +192,12 @@ export default function App() {
     }
   };
 
-  // 刷新邀请进度 + 获得奖励记录（登录后 / 邀请成功后 / 进入邀请页时调用）
-  const refreshReferralData = () => {
+  // 刷新邀请进度 + 获得奖励记录（登录后 / 邀请成功后 / 进入邀请页时调用）。
+  // useCallback 固定引用：DashboardPage 的 effect 依赖此函数，若每次渲染都是新引用会触发无限刷新循环。
+  const refreshReferralData = useCallback(() => {
     void fetchMyReferralStats().then(setReferralStats);
     void fetchMyReferralHistory().then(setReferralHistory);
-  };
+  }, []);
 
   const triggerUpgrade = (reason: string) => {
     if (!user) {
@@ -1428,6 +1436,16 @@ export default function App() {
         isOpen={isAgreementModalOpen}
         onClose={() => setIsAgreementModalOpen(false)}
         initialTab={agreementInitialTab}
+      />
+
+      {/* 被邀请新用户注册成功后的奖励欢迎弹窗 */}
+      <ReferralWelcomeModal
+        isOpen={isReferralWelcomeOpen}
+        onClose={() => setIsReferralWelcomeOpen(false)}
+        onGoTemplates={() => {
+          setIsReferralWelcomeOpen(false);
+          navigate(PAGE_PATH.templates);
+        }}
       />
 
       {/* Global Footer */}
