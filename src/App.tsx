@@ -180,8 +180,9 @@ export default function App() {
     if (!code) return;
     const result = await grantReferralReward(code);
     if (result.rewarded || result.error) storeReferralCode(null);
-    if (result.rewarded && !result.already) {
-      // 首次发放成功：弹欢迎窗引导新用户去模板中心
+    // 仅在实际获得奖励时弹欢迎窗（inviteeQuota===1）。
+    // 作弊用户（同设备马甲，inviteeQuota=0）不弹窗——未获得奖励无提示。
+    if (result.rewarded && !result.already && result.inviteeQuota === 1) {
       setIsReferralWelcomeOpen(true);
     }
     const uid = user?.uid || user?.id;
